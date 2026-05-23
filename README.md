@@ -1,0 +1,2 @@
+# materialgenerate
+用来给coze网页的软著材料生成平台源代码
