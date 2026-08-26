@@ -1,12 +1,12 @@
 # 统一软著申报系统
 
-本仓库同时包含 Cloudflare Pages 静态前端和唯一的 Railway Node 后端。
+本仓库同时包含 Cloudflare Pages 静态前端和唯一的 Render Node 后端。
 
 ## 架构
 
 ```text
 Cloudflare Pages（Next.js 静态前端）
-  └─ Railway Node API
+  └─ Render Free Node API
       ├─ 申请信息 CRUD
       ├─ Supabase JWT 校验与数据存取
       ├─ API Key AES-256-GCM 加密保存
@@ -17,7 +17,7 @@ Cloudflare Pages（Next.js 静态前端）
 Supabase：Auth + PostgreSQL + 私有 Storage
 ```
 
-用户只会访问两个公开地址：Pages 前端和 Railway API。Supabase Storage 不需要自定义域名。
+用户只会访问两个公开地址：Pages 前端和 Render API。Supabase Storage 不需要自定义域名。
 
 ## 目录
 
@@ -52,7 +52,7 @@ Build command: pnpm build:pages
 Build output directory: out
 ```
 
-Railway 使用根目录 `Dockerfile`，健康检查为 `/health`。完整环境变量和部署顺序见 `DEPLOYMENT.md`。
+Render 使用根目录 `Dockerfile`，健康检查为 `/health`。完整环境变量和部署顺序见 `DEPLOYMENT.md`。
 
 ## 安全边界
 

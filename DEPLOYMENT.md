@@ -4,7 +4,7 @@
 
 ```text
 前端：https://<pages-project>.pages.dev
-后端：https://<railway-service>.up.railway.app
+后端：https://<render-service>.onrender.com
 ```
 
 Supabase Storage 是托管能力，不需要购买或配置额外域名。按以下顺序操作可以避开 Pages 地址与 CORS 配置之间的循环依赖。
@@ -27,7 +27,7 @@ Supabase Storage 是托管能力，不需要购买或配置额外域名。按以
 4. 在 Project Settings → API 中记录：
    - Project URL
    - Publishable key（可公开，仅给 Pages）
-   - Secret key/service role key（高权限，仅给 Railway）
+   - Secret key/service role key（高权限，仅给 Render）
 5. 暂时不要填写最终 Redirect URL；获得 Pages 地址后在第 6 步补齐。
 
 正式对外使用前应在 Authentication → SMTP Settings 配置自有 SMTP。Supabase 默认邮件服务适合测试，不适合作为正式邮件通道。
@@ -36,17 +36,18 @@ Supabase Storage 是托管能力，不需要购买或配置额外域名。按以
 
 1. 在 Supabase Dashboard → Storage → New bucket 创建桶，名称使用 `generated-documents`。
 2. 关闭 `Public bucket`，保持私有。
-3. Railway 使用 Supabase 服务端密钥访问文件，并为历史下载生成 15 分钟临时 URL。
+3. Render 使用 Supabase 服务端密钥访问文件，并为历史下载生成 15 分钟临时 URL。
 4. 不需要创建 Cloudflare 对象存储、对象存储 API Token 或对象存储自定义域名。
 
-浏览器不直接访问 Supabase Storage API。上传和下载均由 Railway 后端完成。
+浏览器不直接访问 Supabase Storage API。上传和下载均由 Render 后端完成。
 
-## 3. 部署唯一的 Railway Node 后端
+## 3. 部署唯一的 Render Free Node 后端
 
-1. Railway 新建 Project → Deploy from GitHub repo，选择 `materialgenerate`。
-2. Root Directory 保持仓库根目录。
-3. Railway 会读取根目录 `Dockerfile` 和 `railway.json`。
-4. 添加以下变量：
+1. 在 Render 点击 `New` → `Web Service`，连接 GitHub 并选择 `materialgenerate`。
+2. Root Directory 保持为空或填写 `/`。
+3. Language 选择 `Docker`，Dockerfile Path 填 `Dockerfile`。
+4. Instance Type 选择 `Free`。
+5. 添加以下变量：
 
 ```text
 SUPABASE_URL=<Supabase Project URL>
@@ -61,7 +62,7 @@ RATE_LIMIT_MAX=300
 AI_RATE_LIMIT_MAX=30
 ```
 
-不要手动设置 `PORT`，Railway 会自动注入。可在 PowerShell 生成加密密钥：
+不要手动设置 `PORT`，Render 会自动注入 `10000`。可在 PowerShell 生成加密密钥：
 
 ```powershell
 [Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
@@ -69,9 +70,9 @@ AI_RATE_LIMIT_MAX=30
 
 `LLM_KEY_ENCRYPTION_SECRET` 上线后必须长期备份；更改它会导致已保存的用户 API Key 无法解密。
 
-5. 部署成功后生成 Railway Public Domain。
-6. 访问 `https://<railway-domain>/health`，应返回 `{"ok":true}`。
-7. 记录完整 Railway URL，不要在末尾添加 `/`。
+6. 部署成功后记录 Render Public URL。
+7. 访问 `https://<render-domain>/health`，应返回 `{"ok":true}`。
+8. 记录完整 Render URL，不要在末尾添加 `/`。
 
 ## 4. 部署 Cloudflare Pages 前端
 
@@ -92,16 +93,16 @@ Node version: 22
 ```text
 NEXT_PUBLIC_SUPABASE_URL=<Supabase Project URL>
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=<Supabase Publishable key>
-NEXT_PUBLIC_API_URL=https://<railway-domain>
+NEXT_PUBLIC_API_URL=https://<render-domain>
 ```
 
 Pages 中绝对不能出现 Supabase secret/service role key 或 `LLM_KEY_ENCRYPTION_SECRET`。
 
 5. 部署并记录最终 `https://<project>.pages.dev` 地址。
 
-## 5. 回填 Railway CORS
+## 5. 回填 Render CORS
 
-将 Railway 的变量改为：
+将 Render 的变量改为：
 
 ```text
 ALLOWED_ORIGINS=https://<project>.pages.dev
@@ -113,7 +114,7 @@ ALLOWED_ORIGINS=https://<project>.pages.dev
 ALLOWED_ORIGINS=https://example.com,https://<project>.pages.dev
 ```
 
-保存后等待 Railway 自动重新部署。
+保存后等待 Render 自动重新部署。
 
 ## 6. 配置 Supabase Auth URL
 
@@ -149,19 +150,19 @@ https://<project>.pages.dev/auth/reset-password/
 
 ## 8. 当前运维边界
 
-- 模型调用直接从 Railway Node 发往固定的 OpenAI/DeepSeek 官方端点，不再部署 Cloudflare Worker。
+- 模型调用直接从 Render Node 发往固定的 OpenAI/DeepSeek 官方端点，不再部署 Cloudflare Worker。
 - OpenAI 白名单：`gpt-5-mini`、`gpt-5.1`。
 - DeepSeek 白名单：`deepseek-v4-flash`、`deepseek-v4-pro`。
 - 一个账号同一时间只能执行一个文档生成任务。
-- 当前生成任务依赖单条 SSE 连接；刷新页面或 Railway 重启会中断当次任务。小规模使用可接受，若以后任务量明显增长，再升级为持久化任务队列。
+- 当前生成任务依赖单条 SSE 连接；刷新页面或 Render 重启会中断当次任务。Render Free 空闲 15 分钟后会休眠，首次访问可能需要约 1 分钟唤醒；小规模使用可接受，若以后任务量明显增长，再升级为常驻服务。
 - 当前 IP 限流保存在单个 Node 实例内存中；单实例小流量够用，多实例部署时应换成 Redis 等共享限流存储。
 
 ## 9. 常见故障定位
 
-- 浏览器报 CORS：核对 Railway `ALLOWED_ORIGINS` 是否与地址完全一致，且无末尾 `/`。
+- 浏览器报 CORS：核对 Render `ALLOWED_ORIGINS` 是否与地址完全一致，且无末尾 `/`。
 - 前端提示 API 未配置：修改 Pages 的 `NEXT_PUBLIC_API_URL` 后必须重新构建部署。
 - 邮箱链接无效：核对 Supabase Site URL、Redirect URLs 和路径末尾 `/`。
 - 模型测试 401/403：用户 Key 无效、没有余额，或账号无对应模型权限。
 - 模型测试 400：先核对选择的 provider/model；服务不接受任意模型名或 Base URL。
-- Storage 上传失败：核对 Bucket 名称、是否为私有桶，以及 Railway 使用的 Supabase 服务端密钥是否正确。
-- DOCX 转换失败：查看 Railway 日志中失败阶段；日志不会输出 API Key 或提示词正文。
+- Storage 上传失败：核对 Bucket 名称、是否为私有桶，以及 Render 使用的 Supabase 服务端密钥是否正确。
+- DOCX 转换失败：查看 Render 日志中失败阶段；日志不会输出 API Key 或提示词正文。

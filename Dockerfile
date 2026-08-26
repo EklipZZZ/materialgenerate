@@ -16,5 +16,5 @@ RUN pip3 install --no-cache-dir --break-system-packages -r server/requirements.t
 RUN pnpm --dir server build
 
 ENV NODE_ENV=production
-EXPOSE 8787
+EXPOSE 10000
 CMD ["pnpm", "--dir", "server", "start"]
