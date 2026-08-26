@@ -1,0 +1,13 @@
+.git
+.next
+out
+node_modules
+server/node_modules
+server/dist
+server/.test-dist
+server/.test-venv
+server/.generation-test-temp
+archive
+.env
+.env.*
+*.log

@@ -1,4 +1,7 @@
 .next
+server/.test-dist/
+server/.generation-test-temp/
+server/.test-venv/
 
 # Dependencies
 node_modules/
@@ -95,5 +98,3 @@ Desktop.ini
 # Misc
 .vercel
 .turbo
-
-.coze-logs

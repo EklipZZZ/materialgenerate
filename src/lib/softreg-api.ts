@@ -1,8 +1,13 @@
-import type { CopyrightFormData } from "./copyright-form";
-import { formToUpdatePayload, recordToFormData } from "./copyright-form";
+"use client";
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_SOFTREG_API_URL?.replace(/\/$/, "") || "http://localhost:8000";
+import {
+  EMPTY_COPYRIGHT_FORM,
+  formToUpdatePayload,
+  recordToFormData,
+  type CopyrightFormData,
+} from "@/lib/copyright-form";
+import { API_URL, requireApiUrl } from "@/lib/api-base";
+import { authorizedFetch } from "@/lib/auth";
 
 interface ApiEnvelope<T> {
   code: number;
@@ -10,47 +15,65 @@ interface ApiEnvelope<T> {
   data: T;
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<ApiEnvelope<T>> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers || {}),
-    },
+export interface ApplicationRecord extends CopyrightFormData {
+  id: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+async function unwrap<T>(response: Response): Promise<T> {
+  const body = (await response.json().catch(() => ({}))) as Partial<ApiEnvelope<T>> & {
+    detail?: string;
+    message?: string;
+  };
+  if (!response.ok || (typeof body.code === "number" && body.code >= 400)) {
+    throw new Error(body.msg || body.detail || body.message || "请求失败");
+  }
+  return body.data as T;
+}
+
+function endpoint(path: string): string {
+  return requireApiUrl(API_URL, "NEXT_PUBLIC_API_URL") + path;
+}
+
+export async function listApplications(): Promise<ApplicationRecord[]> {
+  const response = await authorizedFetch(endpoint("/api/applications"));
+  const data = await unwrap<Record<string, unknown>[]>(response);
+  return data.map((record) => recordToFormData(record) as ApplicationRecord);
+}
+
+export async function getApplication(id: string): Promise<ApplicationRecord> {
+  const response = await authorizedFetch(endpoint("/api/applications/" + encodeURIComponent(id)));
+  return recordToFormData(await unwrap<Record<string, unknown>>(response)) as ApplicationRecord;
+}
+
+export async function createApplication(
+  form: CopyrightFormData = EMPTY_COPYRIGHT_FORM,
+): Promise<ApplicationRecord> {
+  const response = await authorizedFetch(endpoint("/api/applications"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(formToUpdatePayload(form)),
   });
-  const json = (await res.json()) as ApiEnvelope<T>;
-  if (!res.ok) {
-    throw new Error(json.msg || `请求失败 (${res.status})`);
-  }
-  return json;
+  return recordToFormData(await unwrap<Record<string, unknown>>(response)) as ApplicationRecord;
 }
 
-export function getSoftregApiBase(): string {
-  return API_BASE;
+export async function updateApplication(
+  id: string,
+  form: CopyrightFormData,
+): Promise<ApplicationRecord> {
+  const response = await authorizedFetch(endpoint("/api/applications/" + encodeURIComponent(id)), {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(formToUpdatePayload(form)),
+  });
+  return recordToFormData(await unwrap<Record<string, unknown>>(response)) as ApplicationRecord;
 }
 
-export async function queryByCode(queryCode: string): Promise<CopyrightFormData> {
-  const code = queryCode.trim().toUpperCase();
-  const res = await request<Record<string, unknown>>(`/api/software-copyright/query/${code}`);
-  if (res.code !== 200 || !res.data) {
-    throw new Error(res.msg || "查询码不存在");
-  }
-  return recordToFormData(res.data);
-}
-
-export async function saveEnrichedForm(form: CopyrightFormData): Promise<CopyrightFormData> {
-  if (!form.id) {
-    throw new Error("缺少表单 ID，无法保存");
-  }
-  const res = await request<Record<string, unknown>>(
-    `/api/software-copyright/form/${form.id}`,
-    {
-      method: "PUT",
-      body: JSON.stringify(formToUpdatePayload(form)),
-    }
-  );
-  if (res.code !== 200 || !res.data) {
-    throw new Error(res.msg || "保存失败");
-  }
-  return recordToFormData(res.data);
+export async function deleteApplication(id: string): Promise<void> {
+  const response = await authorizedFetch(endpoint("/api/applications/" + encodeURIComponent(id)), {
+    method: "DELETE",
+  });
+  await unwrap(response);
 }

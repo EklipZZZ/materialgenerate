@@ -1,0 +1,10 @@
+packages:
+  - "."
+  - "server"
+
+allowBuilds:
+  esbuild: true
+  sharp: true
+
+overrides:
+  esbuild: ^0.25.12

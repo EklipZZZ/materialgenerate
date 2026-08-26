@@ -1,9 +1,9 @@
-/** 软著采集表字段（与 Supabase / 小程序一致，snake_case） */
+/** Application fields shared by the Pages UI and the generation service. */
 export interface CopyrightFormData {
   id?: string;
-  user_id?: string;
-  query_code?: string;
   status?: string;
+  created_at?: string;
+  updated_at?: string;
   software_full_name: string;
   software_short_name: string;
   version: string;
@@ -33,8 +33,8 @@ export const EMPTY_COPYRIGHT_FORM: CopyrightFormData = {
   software_category: "",
   development_date: "",
   is_published: false,
-  development_hardware: "PC机",
-  runtime_hardware: "PC机",
+  development_hardware: "PC",
+  runtime_hardware: "PC",
   development_os: "Windows 10",
   development_tools: "",
   runtime_platform: "Windows 10",
@@ -54,48 +54,34 @@ const MD_FIELD_ROWS: Array<{ key: keyof CopyrightFormData; label: string }> = [
   { key: "software_short_name", label: "软件简称" },
   { key: "version", label: "版本号" },
   { key: "software_category", label: "软件分类" },
-  { key: "development_date", label: "软件开发完成日期" },
+  { key: "development_date", label: "开发完成日期" },
   { key: "is_published", label: "是否发表" },
-  { key: "development_hardware", label: "开发的硬件环境(50字符内)" },
-  { key: "runtime_hardware", label: "运行的硬件环境(50字符内)" },
-  { key: "development_os", label: "开发操作系统(50字符内)" },
-  { key: "development_tools", label: "软件开发环境/工具(50字符内)" },
-  { key: "runtime_platform", label: "运行平台/操作系统(50字符内)" },
-  { key: "runtime_environment", label: "软件运行支撑环境(50字符内)" },
-  { key: "programming_language", label: "编程语言(50字符内)" },
+  { key: "development_hardware", label: "开发硬件环境" },
+  { key: "runtime_hardware", label: "运行硬件环境" },
+  { key: "development_os", label: "开发操作系统" },
+  { key: "development_tools", label: "开发工具" },
+  { key: "runtime_platform", label: "运行平台" },
+  { key: "runtime_environment", label: "运行环境" },
+  { key: "programming_language", label: "编程语言" },
   { key: "source_code_lines", label: "源程序量" },
-  { key: "development_purpose", label: "开发目的(50字符内)" },
-  { key: "target_industry", label: "面向领域 / 行业(50字符内)" },
-  { key: "main_functions", label: "软件的主要功能(500~1300字符)" },
-  { key: "technical_features", label: "软件的技术特点(100字符内)" },
+  { key: "development_purpose", label: "开发目的" },
+  { key: "target_industry", label: "面向领域/行业" },
+  { key: "main_functions", label: "主要功能" },
+  { key: "technical_features", label: "技术特点" },
   { key: "company_name", label: "公司名称" },
   { key: "credit_code", label: "统一社会信用代码" },
 ];
 
-const LABEL_TO_KEY: Record<string, keyof CopyrightFormData> = {};
-for (const row of MD_FIELD_ROWS) {
-  LABEL_TO_KEY[row.label] = row.key;
-  LABEL_TO_KEY[row.label.replace(/\(.*\)/, "").trim()] = row.key;
-}
-LABEL_TO_KEY["软件全称"] = "software_full_name";
-LABEL_TO_KEY["软件简称"] = "software_short_name";
-LABEL_TO_KEY["版本号"] = "version";
-LABEL_TO_KEY["软件分类"] = "software_category";
-LABEL_TO_KEY["软件开发完成日期"] = "development_date";
-LABEL_TO_KEY["是否发表"] = "is_published";
-LABEL_TO_KEY["源程序量"] = "source_code_lines";
-LABEL_TO_KEY["公司名称"] = "company_name";
-LABEL_TO_KEY["统一社会信用代码"] = "credit_code";
+const LABEL_TO_KEY = Object.fromEntries(
+  MD_FIELD_ROWS.map(({ key, label }) => [label, key]),
+) as Record<string, keyof CopyrightFormData>;
 
 function formatFieldValue(key: keyof CopyrightFormData, value: unknown): string {
   if (value === null || value === undefined) return "";
-  if (key === "is_published") {
-    return value === true || value === "true" || value === "已发表" ? "已发表" : "未发表";
-  }
+  if (key === "is_published") return value === true ? "已发表" : "未发表";
   return String(value);
 }
 
-/** 将采集表记录转为生成接口使用的 Markdown 表格 */
 export function formToMarkdown(form: CopyrightFormData): string {
   const lines = [
     "### 计算机软件著作权登记信息采集表",
@@ -104,35 +90,28 @@ export function formToMarkdown(form: CopyrightFormData): string {
     "| :--- | :--- |",
   ];
   for (const { key, label } of MD_FIELD_ROWS) {
-    const value = formatFieldValue(key, form[key]);
-    lines.push(`| **${label}** | ${value.replace(/\|/g, "\\|")} |`);
+    const value = formatFieldValue(key, form[key]).replace(/\|/g, "\\|");
+    lines.push("| **" + label + "** | " + value + " |");
   }
   return lines.join("\n");
 }
 
-/** 从 API 响应解析为表单数据 */
 export function recordToFormData(record: Record<string, unknown>): CopyrightFormData {
-  const effective =
-    (record.effective_form as Record<string, unknown>) || record;
   const enriched = record.enriched_data as Record<string, unknown> | null;
-  const base = enriched && record.status === "enriched" ? { ...record, ...enriched } : effective;
-
+  const base = enriched && record.status === "enriched" ? { ...record, ...enriched } : record;
   return {
-    id: String(base.id ?? record.id ?? ""),
-    user_id: String(base.user_id ?? ""),
-    query_code: String(base.query_code ?? record.query_code ?? ""),
-    status: String(base.status ?? record.status ?? "draft"),
+    id: String(base.id ?? ""),
+    status: String(base.status ?? "draft"),
+    created_at: String(base.created_at ?? ""),
+    updated_at: String(base.updated_at ?? ""),
     software_full_name: String(base.software_full_name ?? ""),
     software_short_name: String(base.software_short_name ?? ""),
     version: String(base.version ?? "V1.0"),
     software_category: String(base.software_category ?? ""),
     development_date: String(base.development_date ?? ""),
-    is_published:
-      base.is_published === true ||
-      base.is_published === "true" ||
-      base.is_published === "已发表",
-    development_hardware: String(base.development_hardware ?? "PC机"),
-    runtime_hardware: String(base.runtime_hardware ?? "PC机"),
+    is_published: base.is_published === true || base.is_published === "true" || base.is_published === "已发表",
+    development_hardware: String(base.development_hardware ?? "PC"),
+    runtime_hardware: String(base.runtime_hardware ?? "PC"),
     development_os: String(base.development_os ?? "Windows 10"),
     development_tools: String(base.development_tools ?? ""),
     runtime_platform: String(base.runtime_platform ?? "Windows 10"),
@@ -148,35 +127,26 @@ export function recordToFormData(record: Record<string, unknown>): CopyrightForm
   };
 }
 
-/** 解析 Markdown 表格回填表单（AI 补全后使用） */
-export function parseMarkdownToForm(
-  markdown: string,
-  base: CopyrightFormData
-): CopyrightFormData {
+export function parseMarkdownToForm(markdown: string, base: CopyrightFormData): CopyrightFormData {
   const result = { ...base };
   const rowRegex = /\|\s*\*\*(.+?)\*\*\s*\|\s*(.*?)\s*\|/g;
   let match: RegExpExecArray | null;
   while ((match = rowRegex.exec(markdown)) !== null) {
-    const label = match[1].trim();
+    const key = LABEL_TO_KEY[match[1].trim()];
     const value = match[2].trim();
-    const key = LABEL_TO_KEY[label] ?? LABEL_TO_KEY[label.replace(/\(.*\)/, "").trim()];
     if (!key || !value) continue;
-    if (key === "is_published") {
-      result.is_published = value === "已发表";
-    } else if (key === "source_code_lines") {
-      result.source_code_lines = parseInt(value, 10) || 0;
-    } else {
-      (result as Record<string, string | number | boolean>)[key] = value;
-    }
+    if (key === "is_published") result.is_published = value === "已发表";
+    else if (key === "source_code_lines") result.source_code_lines = Number.parseInt(value, 10) || 0;
+    else (result as Record<string, string | number | boolean>)[key] = value;
   }
   return result;
 }
 
 export function formToUpdatePayload(form: CopyrightFormData) {
-  const { id, user_id, query_code, status, ...rest } = form;
+  const { id, status, created_at, updated_at, ...rest } = form;
   void id;
-  void user_id;
-  void query_code;
   void status;
-  return { ...rest, mark_enriched: true };
+  void created_at;
+  void updated_at;
+  return rest;
 }

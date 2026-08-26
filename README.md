@@ -1,88 +1,64 @@
-# 软著材料生成系统
+# 统一软著申报系统
 
-基于 Next.js 16 + shadcn/ui 的材料生成网页应用，用于查询微信小程序采集的软件著作权信息并生成相关材料。
+本仓库同时包含 Cloudflare Pages 静态前端和唯一的 Railway Node 后端。
 
-## 快速开始
+## 架构
 
-### 安装依赖
+```text
+Cloudflare Pages（Next.js 静态前端）
+  └─ Railway Node API
+      ├─ 申请信息 CRUD
+      ├─ Supabase JWT 校验与数据存取
+      ├─ API Key AES-256-GCM 加密保存
+      ├─ OpenAI / DeepSeek 固定端点调用
+      ├─ AI 补全与 DOCX 生成
+      └─ Supabase Storage 私有文件管理
+
+Supabase：Auth + PostgreSQL + 私有 Storage
+```
+
+用户只会访问两个公开地址：Pages 前端和 Railway API。Supabase Storage 不需要自定义域名。
+
+## 目录
+
+- `src/`：Next.js 静态前端。
+- `server/`：Express + TypeScript API。
+- `assets/`：DOCX 转换脚本及模板。
+- `supabase/migrations/`：新 Supabase 项目的数据库迁移。
+- `DEPLOYMENT.md`：从零部署操作清单。
+
+## 本地开发
 
 ```bash
 pnpm install
-```
-
-### 配置环境变量
-
-复制 `.env.example` 为 `.env.local`：
-
-```bash
-cp .env.example .env.local
-```
-
-修改 `.env.local` 中的 API 地址：
-
-```bash
-NEXT_PUBLIC_SOFTREG_API_URL=https://web-production-2c115.up.railway.app
-```
-
-### 启动开发服务器
-
-```bash
 pnpm dev
+pnpm dev:server
 ```
 
-启动后，在浏览器中打开 [http://localhost:5000](http://localhost:5000) 查看应用。
+Node 服务按 `.env.example` 配置本地 `.env`。不得提交 `.env`、服务端 Supabase 密钥或用户模型 Key。
 
-### 构建生产版本
+## 构建与测试
 
 ```bash
-pnpm build
+pnpm build:pages
+pnpm build:server
+pnpm --dir server test
 ```
 
-## 项目结构
+Pages 配置：
 
-```
-src/
-├── app/                      # Next.js App Router 目录
-│   ├── app/                  # 工作台页面
-│   │   ├── history/          # 历史记录
-│   │   └── page.tsx          # 主页面
-│   ├── login/                # 登录页面
-│   ├── register/             # 注册页面
-│   ├── api/                  # API 路由
-│   ├── layout.tsx           # 根布局组件
-│   └── page.tsx             # 首页
-├── components/              # React 组件目录
-│   ├── ui/                  # shadcn/ui 基础组件
-│   ├── copyright-form-editor.tsx    # 采集表编辑器
-│   └── copyright-query-panel.tsx    # 查询面板
-└── lib/                     # 工具函数库
+```text
+Build command: pnpm build:pages
+Build output directory: out
 ```
 
-## API 连接
+Railway 使用根目录 `Dockerfile`，健康检查为 `/health`。完整环境变量和部署顺序见 `DEPLOYMENT.md`。
 
-本项目连接到部署在 Railway 的 FastAPI 后端：
+## 安全边界
 
-- **后端地址**: `https://web-production-2c115.up.railway.app`
-- **API 文档**: `https://web-production-2c115.up.railway.app/docs`
-
-### 主要功能
-
-1. **查询登记信息** - 通过查询码获取微信小程序提交的采集表数据
-2. **生成材料** - 根据采集信息生成软著登记所需材料
-3. **历史记录** - 查看已生成的材料记录
-
-## 技术栈
-
-- **框架**: Next.js 16.1.1 (App Router)
-- **UI 组件**: shadcn/ui (基于 Radix UI)
-- **样式**: Tailwind CSS v4
-- **表单**: React Hook Form + Zod
-- **图标**: Lucide React
-- **包管理器**: pnpm 9+
-- **TypeScript**: 5.x
-
-## 重要提示
-
-1. **必须使用 pnpm** 作为包管理器
-2. **配置正确的 API 地址** - 在 `.env.local` 中设置 `NEXT_PUBLIC_SOFTREG_API_URL`
-3. **后端服务** - 确保 Railway 后端服务处于运行状态
+- Node 从 Supabase Access Token 解析用户身份，所有服务端数据查询均显式限定 `user_id`。
+- API Key 只以 AES-256-GCM 密文保存，接口只返回末四位。
+- 模型端点和模型名称在源码中白名单固定，不接受自定义 Base URL。
+- OpenAI 和 DeepSeek 的错误响应正文不会写入日志或返回浏览器。
+- API 有基础 IP 限流；同一用户同一时间只运行一个文档生成任务。
+- Supabase Storage 只保存私有对象，下载时生成 15 分钟临时链接。
