@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/components/auth-provider";
 import { apiEndpoint } from "@/lib/api-base";
 import { authorizedFetch } from "@/lib/auth";
+import { BrandLogo, VisualPage } from "@/components/visual-effects";
 
 interface GenerationRecord {
   id: string;
@@ -50,19 +51,22 @@ export default function HistoryPage() {
     }
   }
 
-  if (loading || !user) return <main className="flex min-h-screen items-center justify-center bg-[#030014] text-white">正在加载…</main>;
+  if (loading || !user) return <VisualPage className="flex items-center justify-center text-center text-white">正在加载…</VisualPage>;
 
   return (
-    <main className="min-h-screen bg-[#030014] px-4 py-8 text-white sm:px-8">
+    <VisualPage className="px-4 py-8 text-white sm:px-8">
       <div className="mx-auto max-w-5xl">
-        <Link href="/app" className="text-sm text-white/60 hover:text-white">← 返回工作台</Link>
-        <h1 className="mt-4 text-3xl font-bold">生成历史</h1>
+        <div className="mb-8 flex items-center justify-between gap-4 border-b border-white/10 pb-5">
+          <BrandLogo label="软著申报助手" />
+          <Link href="/app" className="text-sm text-white/60 transition-colors hover:text-white">← 返回工作台</Link>
+        </div>
+        <h1 className="gradient-heading mt-4 text-3xl font-bold">生成历史</h1>
         {error && <p className="mt-4 text-sm text-red-300">{error}</p>}
-        <Card className="mt-6 border-white/10 bg-white/[0.04]">
+        <Card className="glass-panel card-glow mt-6">
           <CardHeader><CardTitle>我的生成记录</CardTitle></CardHeader>
           <CardContent className="space-y-3">
             {records.length === 0 ? <p className="text-white/60">暂无生成记录</p> : records.map((record) => (
-              <div className="rounded-lg border border-white/10 p-4" key={record.id}>
+              <div className="card-glow rounded-xl border border-white/10 bg-white/[0.03] p-4" key={record.id}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div><div className="font-medium">{record.file_name || "未命名申请"}</div><div className="text-sm text-white/50">{record.provider}/{record.model} · {record.status}</div></div>
                   <span className="text-xs text-white/50">{record.created_at ? new Date(record.created_at).toLocaleString() : ""}</span>
@@ -84,6 +88,6 @@ export default function HistoryPage() {
           </CardContent>
         </Card>
       </div>
-    </main>
+    </VisualPage>
   );
 }

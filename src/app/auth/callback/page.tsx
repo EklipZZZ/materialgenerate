@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
+import { VisualPage } from "@/components/visual-effects";
 
 export default function AuthCallbackPage() {
   const router = useRouter();
@@ -23,5 +24,5 @@ export default function AuthCallbackPage() {
     });
   }, [router]);
 
-  return <main className="flex min-h-screen items-center justify-center bg-[#030014] text-white">{message}</main>;
+  return <VisualPage className="flex items-center justify-center text-center text-white"><p className="relative z-10 text-white/80">{message}</p></VisualPage>;
 }

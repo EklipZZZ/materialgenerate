@@ -17,6 +17,7 @@ import { apiEndpoint } from "@/lib/api-base";
 import { authorizedFetch } from "@/lib/auth";
 import { uploadSourceFile } from "@/lib/source-upload";
 import type { ByokConfig } from "@/lib/byok";
+import { BrandLogo, VisualPage } from "@/components/visual-effects";
 
 interface GenerationResult {
   sourceCodeDocx?: string;
@@ -128,22 +129,22 @@ export default function AppPage() {
   }
 
   if (loading || !user) {
-    return <main className="flex min-h-screen items-center justify-center bg-[#030014] text-white">正在加载…</main>;
+    return <VisualPage className="flex items-center justify-center text-center text-white">正在加载…</VisualPage>;
   }
 
   return (
-    <main className="min-h-screen bg-[#030014] px-4 py-6 text-white sm:px-8">
+    <VisualPage className="px-4 py-6 text-white sm:px-8">
       <nav className="mx-auto flex max-w-7xl items-center justify-between border-b border-white/10 pb-5">
-        <Link href="/" className="font-semibold">软著申报助手</Link>
+        <BrandLogo label="软著申报助手" />
         <div className="flex items-center gap-2">
-          <Link href="/app/history"><Button variant="ghost">生成历史</Button></Link>
-          <Link href="/settings/llm-keys"><Button variant="ghost">API Key 配置</Button></Link>
-          <Button variant="outline" onClick={() => void signOut().then(() => router.replace("/"))}>退出</Button>
+          <Link href="/app/history"><Button variant="ghost" className="text-white/75">生成历史</Button></Link>
+          <Link href="/settings/llm-keys"><Button variant="ghost" className="text-white/75">API Key 配置</Button></Link>
+          <Button variant="outline" className="rounded-xl" onClick={() => void signOut().then(() => router.replace("/"))}>退出</Button>
         </div>
       </nav>
       <div className="mx-auto max-w-7xl space-y-8 py-8">
         <div>
-          <h1 className="text-3xl font-bold">申报工作台</h1>
+          <h1 className="gradient-heading text-3xl font-bold">申报工作台</h1>
           <p className="mt-2 text-white/60">{user.email} · 先提交申请，再输入临时 API Key 生成材料。</p>
         </div>
         <ApplicationForm onCreated={() => setRefreshToken((value) => value + 1)} />
@@ -154,7 +155,7 @@ export default function AppPage() {
           byok={byok}
           onReadyToGenerate={setPayload}
         />
-        <Card className="border-white/10 bg-white/[0.04]">
+        <Card className="glass-panel card-glow">
           <CardHeader><CardTitle>AI 文档生成</CardTitle></CardHeader>
           <CardContent className="space-y-5">
             <div className="flex flex-wrap items-center gap-3">
@@ -204,6 +205,6 @@ export default function AppPage() {
           </CardContent>
         </Card>
       </div>
-    </main>
+    </VisualPage>
   );
 }
