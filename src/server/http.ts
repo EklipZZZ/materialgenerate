@@ -37,10 +37,36 @@ export async function requireUser(request: NextRequest): Promise<AuthenticatedUs
   if (!token) throw new ApiError(401, "需要登录");
   try {
     const { data, error } = await getSupabaseAdmin().auth.getUser(token);
-    if (error || !data.user) throw new ApiError(401, "登录凭证无效");
+    if (error || !data.user) {
+      const authError = error as {
+        name?: string;
+        message?: string;
+        status?: number;
+        code?: string;
+      } | null;
+      console.error("supabase auth verification failed", {
+        name: authError?.name || "NoUserReturned",
+        message: authError?.message || "Supabase returned no user",
+        status: authError?.status,
+        code: authError?.code,
+      });
+      throw new ApiError(401, "登录凭证无效");
+    }
     return { id: data.user.id, email: data.user.email };
   } catch (error) {
     if (error instanceof ApiError) throw error;
+    const authError = error as {
+      name?: string;
+      message?: string;
+      status?: number;
+      code?: string;
+    };
+    console.error("supabase auth verification failed", {
+      name: authError?.name || "UnknownError",
+      message: authError?.message || "Unknown authentication error",
+      status: authError?.status,
+      code: authError?.code,
+    });
     throw new ApiError(401, "登录凭证无效");
   }
 }
