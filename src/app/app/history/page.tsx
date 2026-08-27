@@ -1,12 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Download, FileArchive, FileOutput, MoreHorizontal } from "lucide-react";
+import { AppShell, EmptyState, PageHeader, Panel, StatusBadge, formatDateTime } from "@/components/app-shell";
 import { useAuth } from "@/components/auth-provider";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { apiEndpoint } from "@/lib/api-base";
 import { authorizedFetch } from "@/lib/auth";
-import { BrandLogo, VisualPage } from "@/components/visual-effects";
+import { listApplications, type ApplicationRecord } from "@/lib/softreg-api";
 
 interface GenerationRecord {
   id: string;
@@ -18,76 +26,134 @@ interface GenerationRecord {
   created_at?: string;
 }
 
-interface Envelope<T> { data: T; msg?: string; }
+interface Envelope<T> {
+  data?: T;
+  msg?: string;
+  detail?: string;
+}
+
+const downloads = [
+  { kind: "source_code", label: "源代码文档", icon: FileArchive },
+  { kind: "user_manual", label: "用户手册", icon: FileOutput },
+  { kind: "collection_form", label: "采集表", icon: FileOutput },
+] as const;
 
 export default function HistoryPage() {
-  const { user, loading } = useAuth();
+  const { user } = useAuth();
   const [records, setRecords] = useState<GenerationRecord[]>([]);
+  const [applications, setApplications] = useState<ApplicationRecord[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
-    authorizedFetch(apiEndpoint("/api/generation-records"))
-      .then(async (response) => {
-        const body = (await response.json()) as Envelope<GenerationRecord[]> & { detail?: string };
-        if (!response.ok) throw new Error(body.msg || body.detail || "加载历史失败");
-        setRecords(body.data || []);
+    let active = true;
+    Promise.all([
+      authorizedFetch(apiEndpoint("/api/generation-records")).then(async (response) => {
+        const body = await response.json().catch(() => ({})) as Envelope<GenerationRecord[]>;
+        if (!response.ok) throw new Error(body.msg || body.detail || "加载生成记录失败");
+        return body.data || [];
+      }),
+      listApplications(),
+    ])
+      .then(([recordData, applicationData]) => {
+        if (!active) return;
+        setRecords(recordData);
+        setApplications(applicationData);
+        setError(null);
       })
-      .catch((cause) => setError(cause instanceof Error ? cause.message : "加载历史失败"));
+      .catch((cause) => {
+        if (active) setError(cause instanceof Error ? cause.message : "加载生成记录失败");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
   }, [user]);
 
+  const applicationNames = useMemo(() => new Map(applications.map((application) => [application.id, application.software_full_name])), [applications]);
+
   async function download(recordId: string, kind: string) {
+    const key = `${recordId}:${kind}`;
+    setDownloading(key);
     setError(null);
     try {
       const response = await authorizedFetch(
-        apiEndpoint("/api/generation-records/" + encodeURIComponent(recordId) +
-          "/download/" + encodeURIComponent(kind)),
+        apiEndpoint(`/api/generation-records/${encodeURIComponent(recordId)}/download/${encodeURIComponent(kind)}`),
       );
-      const body = (await response.json()) as Envelope<{ url?: string }>;
+      const body = await response.json().catch(() => ({})) as Envelope<{ url?: string }>;
       if (!response.ok || !body.data?.url) throw new Error(body.msg || "获取下载链接失败");
       window.open(body.data.url, "_blank", "noopener,noreferrer");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "获取下载链接失败");
+    } finally {
+      setDownloading(null);
     }
   }
 
-  if (loading || !user) return <VisualPage className="flex items-center justify-center text-center text-white">正在加载…</VisualPage>;
-
   return (
-    <VisualPage className="px-4 py-8 text-white sm:px-8">
-      <div className="mx-auto max-w-5xl">
-        <div className="mb-8 flex items-center justify-between gap-4 border-b border-white/10 pb-5">
-          <BrandLogo label="软著申报助手" />
-          <Link href="/app" className="text-sm text-white/60 transition-colors hover:text-white">← 返回工作台</Link>
-        </div>
-        <h1 className="gradient-heading mt-4 text-3xl font-bold">生成历史</h1>
-        {error && <p className="mt-4 text-sm text-red-300">{error}</p>}
-        <Card className="glass-panel card-glow mt-6">
-          <CardHeader><CardTitle>我的生成记录</CardTitle></CardHeader>
-          <CardContent className="space-y-3">
-            {records.length === 0 ? <p className="text-white/60">暂无生成记录</p> : records.map((record) => (
-              <div className="card-glow rounded-xl border border-white/10 bg-white/[0.03] p-4" key={record.id}>
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div><div className="font-medium">{record.file_name || "未命名申请"}</div><div className="text-sm text-white/50">{record.provider}/{record.model} · {record.status}</div></div>
-                  <span className="text-xs text-white/50">{record.created_at ? new Date(record.created_at).toLocaleString() : ""}</span>
-                </div>
-                <div className="mt-3 flex flex-wrap gap-2 text-sm">
-                  {(["source_code", "user_manual", "collection_form"] as const).map((kind) => (
-                    <button
-                      type="button"
-                      key={kind}
-                      className="text-violet-300 hover:text-violet-100"
-                      onClick={() => void download(record.id, kind)}
-                    >
-                      下载{kind === "source_code" ? "源码文档" : kind === "user_manual" ? "用户手册" : "采集表"}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      </div>
-    </VisualPage>
+    <AppShell>
+      <PageHeader
+        eyebrow="申报空间 / 生成记录"
+        title="生成记录"
+        description="查看已经生成的申报材料，并按需重新获取短时下载链接。"
+      >
+        <Button asChild variant="outline"><Link href="/app/generate"><FileOutput size={15} />继续生成</Link></Button>
+      </PageHeader>
+
+      {error && <div className="app-feedback app-feedback--error">{error}</div>}
+
+      <Panel className="app-table-panel">
+        {loading ? (
+          <p className="app-panel__empty-line">正在加载生成记录…</p>
+        ) : records.length === 0 ? (
+          <EmptyState
+            icon={<Download size={22} />}
+            title="还没有生成记录"
+            description="完成一条申请后，从材料生成页面开始生成，结果会自动出现在这里。"
+            action={<Button asChild><Link href="/app/generate"><FileOutput size={16} />开始生成</Link></Button>}
+          />
+        ) : (
+          <div className="app-table-wrap">
+            <table className="app-table">
+              <thead><tr><th>申请名称</th><th>生成文件</th><th>模型</th><th>状态</th><th>生成时间</th><th><span className="sr-only">下载</span></th></tr></thead>
+              <tbody>
+                {records.map((record) => {
+                  const status = record.status === "failed" || record.status === "error" ? "failed" : "complete";
+                  return (
+                    <tr key={record.id}>
+                      <td>
+                        <span className="app-table__name">{applicationNames.get(record.application_id || "") || record.file_name || "未命名申请"}</span>
+                        <span className="app-table__subtext">{record.file_name || "申报材料"}</span>
+                      </td>
+                      <td><span className="app-file-count"><FileOutput size={14} />3 个文件</span></td>
+                      <td>{record.provider && record.model ? `${record.provider} / ${record.model}` : "—"}</td>
+                      <td><StatusBadge status={status} /></td>
+                      <td>{formatDateTime(record.created_at)}</td>
+                      <td>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button size="icon-sm" variant="ghost" aria-label="打开下载菜单"><MoreHorizontal size={16} /></Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {downloads.map(({ kind, label, icon: Icon }) => {
+                              const key = `${record.id}:${kind}`;
+                              return <DropdownMenuItem key={kind} disabled={downloading === key} onSelect={() => void download(record.id, kind)}><Icon size={14} />{downloading === key ? "获取链接中…" : `下载${label}`}</DropdownMenuItem>;
+                            })}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Panel>
+    </AppShell>
   );
 }

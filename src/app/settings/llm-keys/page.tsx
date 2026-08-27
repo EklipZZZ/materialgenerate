@@ -1,37 +1,34 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { ArrowLeft, KeyRound, LockKeyhole } from "lucide-react";
+import { AppShell, PageHeader, Panel } from "@/components/app-shell";
 import { ByokPanel } from "@/components/byok-panel";
-import { useAuth } from "@/components/auth-provider";
 import type { ByokConfig } from "@/lib/byok";
-import { BrandLogo, VisualPage } from "@/components/visual-effects";
 
 export default function LlmKeysPage() {
-  const router = useRouter();
-  const { user, loading } = useAuth();
   const [byok, setByok] = useState<ByokConfig | null>(null);
 
-  useEffect(() => {
-    if (!loading && !user) router.replace("/login");
-  }, [loading, router, user]);
-
-  if (loading || !user) return <VisualPage className="flex items-center justify-center text-center text-white">正在加载…</VisualPage>;
-
   return (
-    <VisualPage className="px-4 py-8 text-white sm:px-8">
-      <div className="mx-auto max-w-4xl space-y-6">
-        <div className="flex items-center justify-between gap-4 border-b border-white/10 pb-5">
-          <BrandLogo label="软著申报助手" />
-          <Link href="/app" className="text-sm text-white/60 transition-colors hover:text-white">← 返回控制台</Link>
-        </div>
-        <div>
-          <h1 className="gradient-heading mt-3 text-3xl font-bold">API Key 设置</h1>
-        </div>
-        <ByokPanel value={byok} onChange={setByok} />
-        <p className="text-sm text-white/50">系统不会保存你的 API Key。关闭浏览器标签页或点击“清除 Key”后，当前配置将被移除。</p>
+    <AppShell>
+      <PageHeader
+        eyebrow="设置 / AI 配置"
+        title="设置"
+        description="管理当前浏览器 Tab 使用的 AI 服务配置和数据安全选项。"
+      >
+        <Link className="app-back-link" href="/app"><ArrowLeft size={14} />返回总览</Link>
+      </PageHeader>
+
+      <div className="settings-layout">
+        <nav className="settings-nav" aria-label="设置导航">
+          <span className="settings-nav__item settings-nav__item--active"><KeyRound size={14} />AI 配置</span>
+          <div className="settings-nav__note"><LockKeyhole size={14} /><span>安全策略由系统统一管理，API Key 不会写入数据库。</span></div>
+        </nav>
+        <Panel>
+          <ByokPanel value={byok} onChange={setByok} />
+        </Panel>
       </div>
-    </VisualPage>
+    </AppShell>
   );
 }

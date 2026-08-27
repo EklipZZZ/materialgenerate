@@ -2,8 +2,6 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { CopyrightFormEditor } from "@/components/copyright-form-editor";
 import {
   EMPTY_COPYRIGHT_FORM,
@@ -26,12 +24,13 @@ export function ApplicationForm({ onCreated }: Props) {
       setError("请先填写软件全称");
       return;
     }
+
     setSaving(true);
     setError(null);
     setMessage(null);
     try {
       const created = await createApplication(form);
-      setMessage("申请已保存，可以在下方选择它进行 AI 补全或生成材料。");
+      setMessage("申请已保存。你可以继续补充信息，或进入材料生成流程。");
       setForm(EMPTY_COPYRIGHT_FORM);
       onCreated?.(created);
     } catch (cause) {
@@ -42,26 +41,17 @@ export function ApplicationForm({ onCreated }: Props) {
   }
 
   return (
-    <Card className="border-white/10 bg-white/[0.04] text-white">
-      <CardHeader>
-        <CardTitle>提交申请信息</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-5">
-        <CopyrightFormEditor form={form} onChange={setForm} disabled={saving} />
-        {message && (
-          <Alert className="border-emerald-400/30 bg-emerald-500/10">
-            <AlertDescription>{message}</AlertDescription>
-          </Alert>
-        )}
-        {error && (
-          <Alert variant="destructive">
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
-        <Button onClick={submit} disabled={saving}>
+    <div className="application-form">
+      <CopyrightFormEditor form={form} onChange={setForm} disabled={saving} />
+
+      {message && <div className="app-feedback app-feedback--success">{message}</div>}
+      {error && <div className="app-feedback app-feedback--error">{error}</div>}
+
+      <div className="form-actions">
+        <Button type="button" onClick={() => void submit()} disabled={saving}>
           {saving ? "保存中…" : "保存申请信息"}
         </Button>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

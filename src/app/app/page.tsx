@@ -1,210 +1,203 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { ArrowRight, ArrowUpRight, Bot, Clock3, Cpu, FileCheck2, FileText, Plus, ShieldCheck } from "lucide-react";
+import { AppShell, EmptyState, PageHeader, Panel, StatusBadge, formatDateTime } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useAuth } from "@/components/auth-provider";
-import { ApplicationForm } from "@/components/application-form";
-import { ByokPanel } from "@/components/byok-panel";
-import {
-  CopyrightQueryPanel,
-  type QueryPanelGeneratePayload,
-} from "@/components/copyright-query-panel";
+import { listApplications, type ApplicationRecord } from "@/lib/softreg-api";
 import { apiEndpoint } from "@/lib/api-base";
 import { authorizedFetch } from "@/lib/auth";
-import { uploadSourceFile } from "@/lib/source-upload";
-import type { ByokConfig } from "@/lib/byok";
-import { BrandLogo, VisualPage } from "@/components/visual-effects";
+import { getApplicationProgress, getApplicationStatus } from "@/lib/application-progress";
 
-interface GenerationResult {
-  sourceCodeDocx?: string;
-  userManualDocx?: string;
-  collectionFormMarkdown?: string;
-  fileName?: string;
+interface GenerationRecord {
+  id: string;
+  file_name?: string;
+  provider?: string;
+  model?: string;
+  status?: string;
+  created_at?: string;
 }
 
-interface StreamEvent {
-  step: string;
-  message: string;
-  data?: GenerationResult & { chunk?: string };
+interface GenerationEnvelope {
+  data?: GenerationRecord[];
+  msg?: string;
 }
-
-const steps = ["init", "analyze", "source_code", "manual", "convert", "upload"];
 
 export default function AppPage() {
-  const router = useRouter();
-  const { user, loading, signOut } = useAuth();
-  const [refreshToken, setRefreshToken] = useState(0);
-  const [payload, setPayload] = useState<QueryPanelGeneratePayload | null>(null);
-  const [byok, setByok] = useState<ByokConfig | null>(null);
-  const [sourceCodeFile, setSourceCodeFile] = useState<File | null>(null);
-  const [currentStep, setCurrentStep] = useState("");
-  const [message, setMessage] = useState("");
+  const { user } = useAuth();
+  const [applications, setApplications] = useState<ApplicationRecord[]>([]);
+  const [records, setRecords] = useState<GenerationRecord[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<GenerationResult | null>(null);
-  const [generating, setGenerating] = useState(false);
-  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    if (!loading && !user) router.replace("/login");
-  }, [loading, router, user]);
-
-  async function generate() {
-    if (!payload) {
-      setError("请先在我的申请中选择一条申请");
-      return;
-    }
-    if (!byok?.apiKey.trim()) {
-      setError("请先输入 API Key");
-      return;
-    }
-    setGenerating(true);
-    setError(null);
-    setResult(null);
-    setCurrentStep("");
-    setMessage("正在启动生成服务…");
-    const controller = new AbortController();
-    abortRef.current = controller;
-    try {
-      let sourceObjectKey: string | undefined;
-      if (sourceCodeFile) {
-        setMessage("正在上传源码压缩包…");
-        sourceObjectKey = (await uploadSourceFile(sourceCodeFile)).path;
-      }
-      const response = await authorizedFetch(apiEndpoint("/api/generate"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          applicationId: payload.formId,
-          provider: byok.provider,
-          model: byok.model,
-          apiKey: byok.apiKey,
-          tableTemplate: payload.tableTemplate,
-          skipAnalyze: payload.skipAnalyze,
-          sourceObjectKey,
-          sourceFileName: sourceCodeFile?.name,
+    if (!user) return;
+    let active = true;
+    Promise.all([
+      listApplications(),
+      authorizedFetch(apiEndpoint("/api/generation-records"))
+        .then(async (response) => {
+          const body = await response.json().catch(() => ({})) as GenerationEnvelope;
+          if (!response.ok) throw new Error(body.msg || "加载生成记录失败");
+          return body.data || [];
         }),
-        signal: controller.signal,
+    ])
+      .then(([applicationData, recordData]) => {
+        if (!active) return;
+        setApplications(applicationData);
+        setRecords(recordData);
+        setError(null);
+      })
+      .catch((cause) => {
+        if (active) setError(cause instanceof Error ? cause.message : "加载工作台失败");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
       });
-      if (!response.ok) {
-        const bodyText = await response.text();
-        throw new Error(bodyText || "生成请求失败");
-      }
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error("生成服务没有返回进度流");
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let finalResult: GenerationResult | null = null;
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          try {
-            const event = JSON.parse(line.slice(6)) as StreamEvent;
-            setCurrentStep(event.step);
-            setMessage(event.message);
-            if (event.step === "error") throw new Error(event.message);
-            if (event.step === "complete" && event.data) finalResult = event.data;
-          } catch (cause) {
-            if (cause instanceof Error && cause.message !== "Unexpected end of JSON input") throw cause;
-          }
-        }
-      }
-      setResult(finalResult);
-      if (!finalResult) setError("生成服务未返回文件结果");
-    } catch (cause) {
-      if (cause instanceof Error && cause.name === "AbortError") setError("已取消生成");
-      else setError(cause instanceof Error ? cause.message : "生成失败");
-    } finally {
-      setGenerating(false);
-      abortRef.current = null;
-    }
-  }
+    return () => {
+      active = false;
+    };
+  }, [user]);
 
-  if (loading || !user) {
-    return <VisualPage className="flex items-center justify-center text-center text-white">正在加载…</VisualPage>;
-  }
+  const selected = applications[0];
+  const progress = selected ? getApplicationProgress(selected) : null;
+  const editingCount = applications.filter((item) => getApplicationStatus(item) === "editing").length;
+  const readyCount = applications.filter((item) => getApplicationStatus(item) === "ready").length;
 
   return (
-    <VisualPage className="px-4 py-6 text-white sm:px-8">
-      <nav className="mx-auto flex max-w-7xl items-center justify-between border-b border-white/10 pb-5">
-        <BrandLogo label="软著申报助手" />
-        <div className="flex items-center gap-2">
-          <Link href="/app/history"><Button variant="ghost" className="text-white/75">生成历史</Button></Link>
-          <Link href="/settings/llm-keys"><Button variant="ghost" className="text-white/75">API Key 配置</Button></Link>
-          <Button variant="outline" className="rounded-xl" onClick={() => void signOut().then(() => router.replace("/"))}>退出</Button>
+    <AppShell>
+      <PageHeader
+        eyebrow="申报空间 / 概览"
+        title="总览"
+        description="集中处理申请信息，准备并下载软件著作权申报材料。"
+      >
+        <Button asChild>
+          <Link href="/app/applications/new"><Plus size={16} />新建申请</Link>
+        </Button>
+      </PageHeader>
+
+      {error && <div className="app-feedback app-feedback--error">{error}</div>}
+
+      <section className="app-stat-grid" aria-label="工作台概览">
+        <div className="app-stat-card">
+          <span className="app-stat-card__label">进行中的申请</span>
+          <strong className="app-stat-card__value">{loading ? "—" : editingCount}</strong>
+          <span className="app-stat-card__hint"><Clock3 size={13} />需要继续编辑</span>
         </div>
-      </nav>
-      <div className="mx-auto max-w-7xl space-y-8 py-8">
-        <div>
-          <h1 className="gradient-heading text-3xl font-bold">申报工作台</h1>
-          <p className="mt-2 text-white/60">{user.email} · 先提交申请，再输入临时 API Key 生成材料。</p>
+        <div className="app-stat-card">
+          <span className="app-stat-card__label">待生成材料</span>
+          <strong className="app-stat-card__value">{loading ? "—" : readyCount}</strong>
+          <span className="app-stat-card__hint app-stat-card__hint--brand"><FileCheck2 size={13} />信息已完整</span>
         </div>
-        <ApplicationForm onCreated={() => setRefreshToken((value) => value + 1)} />
-        <ByokPanel value={byok} onChange={setByok} />
-        <CopyrightQueryPanel
-          disabled={generating}
-          refreshToken={refreshToken}
-          byok={byok}
-          onReadyToGenerate={setPayload}
-        />
-        <Card className="glass-panel card-glow">
-          <CardHeader><CardTitle>AI 文档生成</CardTitle></CardHeader>
-          <CardContent className="space-y-5">
-            <div className="flex flex-wrap items-center gap-3">
-              <label className="rounded-md border border-dashed border-white/30 px-4 py-3 text-sm text-white/70">
-                <span>{sourceCodeFile ? sourceCodeFile.name : "上传源码压缩包（可选）"}</span>
-                <input
-                  className="hidden"
-                  type="file"
-                  accept=".zip,.tar.gz,.tgz"
-                  onChange={(event) => setSourceCodeFile(event.target.files?.[0] ?? null)}
-                />
-              </label>
-              <Button onClick={generate} disabled={generating || !payload}>
-                {generating ? "生成中…" : "生成申报材料"}
-              </Button>
-              {generating && <Button variant="outline" onClick={() => abortRef.current?.abort()}>取消</Button>}
+        <div className="app-stat-card">
+          <span className="app-stat-card__label">已生成记录</span>
+          <strong className="app-stat-card__value">{loading ? "—" : records.length}</strong>
+          <span className="app-stat-card__hint"><ArrowUpRight size={13} />可随时下载</span>
+        </div>
+      </section>
+
+      <div className="app-dashboard-grid">
+        <Panel className="app-overview-panel">
+          <div className="app-panel__header">
+            <div>
+              <h2 className="app-panel__title">继续处理</h2>
+              <p className="app-panel__description">从最近修改的申请继续申报。</p>
             </div>
-            {payload && <p className="text-sm text-emerald-300">已选择：{payload.fileName}</p>}
-            {currentStep && (
-              <div className="space-y-2">
-                <div className="flex flex-wrap gap-2 text-xs text-white/60">
-                  {steps.map((step) => <span key={step} className={step === currentStep ? "text-violet-300" : ""}>{step}</span>)}
+            {selected && <StatusBadge status={getApplicationStatus(selected)} />}
+          </div>
+          {selected && progress ? (
+            <div className="app-overview-panel__body">
+              <div className="app-overview-panel__application">
+                <div>
+                  <h2>{selected.software_full_name || "未命名申请"}</h2>
+                  <p>最后更新于 {formatDateTime(selected.updated_at)}</p>
                 </div>
-                <p className="text-sm text-white/70">{message}</p>
+                <span className="app-inline-meta">{selected.version || "V1.0"}</span>
               </div>
-            )}
-            {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
-            {result && (
-              <div className="grid gap-2 sm:grid-cols-3">
-                {[
-                  ["sourceCodeDocx", "源码文档"],
-                  ["userManualDocx", "用户手册"],
-                  ["collectionFormMarkdown", "采集表 Markdown"],
-                ].map(([key, label]) => result[key as keyof GenerationResult] && (
-                  <a
-                    key={key}
-                    className="rounded-md border border-emerald-400/30 bg-emerald-500/10 p-3 text-sm text-emerald-200 hover:bg-emerald-500/20"
-                    href={result[key as keyof GenerationResult]}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    下载{label}
-                  </a>
-                ))}
+              <div className="app-progress-summary">
+                <div className="app-progress-summary__value"><strong>{progress.percent}%</strong><span>资料完整度</span></div>
+                <div className="app-progress-track" aria-label={`资料完整度 ${progress.percent}%`}><span style={{ width: `${progress.percent}%` }} /></div>
+                <span className="app-progress-summary__detail">已完成 {progress.completed} / {progress.total} 项</span>
               </div>
-            )}
-          </CardContent>
-        </Card>
+              <div className="app-step-list">
+                <div className={`app-step ${progress.percent > 0 ? "app-step--done" : "app-step--current"}`}>
+                  <span className="app-step__number">1</span><span className="app-step__copy"><strong>申请信息</strong><small>{progress.percent > 0 ? "已填写" : "待填写"}</small></span>
+                </div>
+                <div className={`app-step ${progress.percent >= 70 ? "app-step--done" : "app-step--current"}`}>
+                  <span className="app-step__number">2</span><span className="app-step__copy"><strong>内容检查</strong><small>{progress.percent >= 70 ? "可以生成" : "继续完善"}</small></span>
+                </div>
+                <div className={`app-step ${progress.percent === 100 ? "app-step--current" : ""}`}>
+                  <span className="app-step__number">3</span><span className="app-step__copy"><strong>材料生成</strong><small>{progress.percent === 100 ? "下一步" : "等待完成"}</small></span>
+                </div>
+              </div>
+              <div className="app-overview-panel__footer">
+                <span><ShieldCheck size={14} />信息仅对你可见</span>
+                <Button asChild size="sm" variant="secondary">
+                  <Link href={`/app/applications/${selected.id}`}>继续编辑 <ArrowRight size={14} /></Link>
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <EmptyState
+              title={loading ? "正在加载申请" : "还没有申请记录"}
+              description={loading ? "请稍候。" : "创建第一份申请，开始准备软件著作权登记材料。"}
+              action={!loading && <Button asChild><Link href="/app/applications/new"><Plus size={16} />创建申请</Link></Button>}
+            />
+          )}
+        </Panel>
+
+        <div className="app-dashboard-stack">
+          <Panel className="app-side-panel">
+            <div className="app-side-panel__topline">
+              <span className="app-side-panel__icon"><Bot size={17} /></span>
+              <span className="app-status app-status--ready"><span className="app-status__dot" />按需调用</span>
+            </div>
+            <h2>AI 服务</h2>
+            <p>用于补全申请信息和生成申报材料，Key 不会保存到系统。</p>
+            <div className="app-side-panel__model"><Cpu size={14} />当前配置保存在本地标签页</div>
+            <Link href="/settings/llm-keys" className="app-side-panel__link">管理 AI 设置 <ArrowRight size={14} /></Link>
+          </Panel>
+          <Panel className="app-tip-panel">
+            <span className="app-tip-panel__icon"><FileText size={16} /></span>
+            <div><strong>建议先完善申请信息</strong><p>完整的信息会让后续生成的源码文档和用户手册更准确。</p></div>
+          </Panel>
+        </div>
       </div>
-    </VisualPage>
+
+      <Panel className="app-table-panel">
+        <div className="app-panel__header">
+          <div><h2 className="app-panel__title">最近申请</h2><p className="app-panel__description">查看申请状态，继续编辑或进入材料生成。</p></div>
+          <Link href="/app/applications" className="app-inline-link">查看全部 <ArrowRight size={14} /></Link>
+        </div>
+        {applications.length === 0 && !loading ? (
+          <EmptyState title="暂无申请" description="创建一份申请后，所有资料会显示在这里。" action={<Button asChild><Link href="/app/applications/new"><Plus size={16} />新建申请</Link></Button>} />
+        ) : (
+          <div className="app-table-wrap">
+            <table className="app-table">
+              <thead><tr><th>申请名称</th><th>状态</th><th>资料完整度</th><th>更新时间</th><th /></tr></thead>
+              <tbody>
+                {applications.slice(0, 5).map((application) => {
+                  const itemProgress = getApplicationProgress(application);
+                  return <tr key={application.id}>
+                    <td><span className="app-table__name">{application.software_full_name || "未命名申请"}</span><span className="app-table__subtext">{application.software_short_name || "未填写简称"}</span></td>
+                    <td><StatusBadge status={getApplicationStatus(application)} /></td>
+                    <td><div className="app-table-progress"><span className="app-progress-track"><span style={{ width: `${itemProgress.percent}%` }} /></span><small>{itemProgress.percent}%</small></div></td>
+                    <td>{formatDateTime(application.updated_at)}</td>
+                    <td><div className="app-table__actions"><Link href={`/app/applications/${application.id}`}>编辑</Link><Link href={`/app/generate/${application.id}`}>生成</Link></div></td>
+                  </tr>;
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Panel>
+
+      <Panel className="app-table-panel app-section-gap">
+        <div className="app-panel__header"><div><h2 className="app-panel__title">最近生成</h2><p className="app-panel__description">最近生成的材料可从生成记录中再次下载。</p></div><Link href="/app/history" className="app-inline-link">打开生成记录 <ArrowRight size={14} /></Link></div>
+        {records.length === 0 ? <p className="app-panel__empty-line">暂无生成记录。</p> : <div className="app-table-wrap"><table className="app-table"><thead><tr><th>申请名称</th><th>模型</th><th>状态</th><th>生成时间</th><th /></tr></thead><tbody>{records.slice(0, 5).map((record) => <tr key={record.id}><td><span className="app-table__name">{record.file_name || "未命名申请"}</span></td><td>{record.provider && record.model ? `${record.provider} / ${record.model}` : "—"}</td><td><StatusBadge status={record.status || "complete"} /></td><td>{formatDateTime(record.created_at)}</td><td><Link className="app-inline-link" href="/app/history">查看 <ArrowRight size={14} /></Link></td></tr>)}</tbody></table></div>}
+      </Panel>
+    </AppShell>
   );
 }

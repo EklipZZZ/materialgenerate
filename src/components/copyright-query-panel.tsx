@@ -1,25 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { ArrowRight, FileText, LoaderCircle, Save, Sparkles, Trash2 } from "lucide-react";
+import { EmptyState, Panel, StatusBadge, formatDateTime } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { CopyrightFormEditor } from "@/components/copyright-form-editor";
-import {
-  formToMarkdown,
-  recordToFormData,
-  type CopyrightFormData,
-} from "@/lib/copyright-form";
-import {
-  deleteApplication,
-  listApplications,
-  updateApplication,
-  type ApplicationRecord,
-} from "@/lib/softreg-api";
 import { apiEndpoint } from "@/lib/api-base";
 import { authorizedFetch } from "@/lib/auth";
 import type { ByokConfig } from "@/lib/byok";
+import { formToMarkdown, recordToFormData, type CopyrightFormData } from "@/lib/copyright-form";
+import { deleteApplication, listApplications, updateApplication, type ApplicationRecord } from "@/lib/softreg-api";
 
 export interface QueryPanelGeneratePayload {
   tableTemplate: string;
@@ -65,10 +55,7 @@ export function CopyrightQueryPanel({ disabled, refreshToken, byok, onReadyToGen
     return () => window.clearTimeout(timer);
   }, [refreshToken]);
 
-  const selectedForm = useMemo<CopyrightFormData | null>(
-    () => (selected ? { ...selected } : null),
-    [selected],
-  );
+  const selectedForm = useMemo<CopyrightFormData | null>(() => (selected ? { ...selected } : null), [selected]);
 
   async function save() {
     if (!selectedForm || !selected?.id) return;
@@ -76,11 +63,11 @@ export function CopyrightQueryPanel({ disabled, refreshToken, byok, onReadyToGen
     setError(null);
     try {
       const updated = await updateApplication(selected.id, selectedForm);
-      setApplications((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      setApplications((current) => current.map((item) => item.id === updated.id ? updated : item));
       setSelected(updated);
       setMessage("申请信息已保存");
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "保存失败");
+      setError(cause instanceof Error ? cause.message : "保存申请失败");
     } finally {
       setWorking(false);
     }
@@ -89,26 +76,23 @@ export function CopyrightQueryPanel({ disabled, refreshToken, byok, onReadyToGen
   async function enrich() {
     if (!selected?.id) return;
     if (!byok?.apiKey.trim()) {
-      setError("请先输入 API Key");
+      setError("请先配置 API Key");
       return;
     }
     setWorking(true);
     setError(null);
     try {
-      const response = await authorizedFetch(
-        apiEndpoint("/api/enrich"),
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ applicationId: selected.id, ...byok }),
-        },
-      );
-      const body = (await response.json()) as { data?: Record<string, unknown>; msg?: string };
+      const response = await authorizedFetch(apiEndpoint("/api/enrich"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ applicationId: selected.id, ...byok }),
+      });
+      const body = await response.json().catch(() => ({})) as { data?: Record<string, unknown>; msg?: string };
       if (!response.ok || !body.data) throw new Error(body.msg || "AI 补全失败");
       const updated = recordToFormData(body.data) as ApplicationRecord;
       setSelected(updated);
-      setApplications((current) => current.map((item) => (item.id === updated.id ? updated : item)));
-      setMessage("AI 补全完成，请检查并保存需要调整的字段");
+      setApplications((current) => current.map((item) => item.id === updated.id ? updated : item));
+      setMessage("AI 补全完成，请检查内容");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "AI 补全失败");
     } finally {
@@ -117,84 +101,48 @@ export function CopyrightQueryPanel({ disabled, refreshToken, byok, onReadyToGen
   }
 
   async function remove() {
-    if (!selected?.id || !window.confirm("确定删除这条申请吗？")) return;
+    if (!selected?.id || !window.confirm("确认删除这条申请？")) return;
     setWorking(true);
+    setError(null);
     try {
       await deleteApplication(selected.id);
       const next = applications.filter((item) => item.id !== selected.id);
       setApplications(next);
       setSelected(next[0] ?? null);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "删除失败");
+      setError(cause instanceof Error ? cause.message : "删除申请失败");
     } finally {
       setWorking(false);
     }
   }
 
-  if (loading) {
-    return <Card className="border-white/10 bg-white/[0.04] text-white"><CardContent className="p-6">正在加载你的申请…</CardContent></Card>;
-  }
+  if (loading) return <Panel><p className="app-panel__empty-line">正在加载申请…</p></Panel>;
 
   return (
-    <Card className="border-white/10 bg-white/[0.04] text-white">
-      <CardHeader>
-        <CardTitle>我的申请</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-5">
-        {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
-        {message && <Alert className="border-emerald-400/30 bg-emerald-500/10"><AlertDescription>{message}</AlertDescription></Alert>}
-        {applications.length === 0 ? (
-          <p className="text-white/60">还没有申请记录，请先提交申请信息。</p>
-        ) : (
-          <>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {applications.map((application) => (
-                <button
-                  type="button"
-                  key={application.id}
-                  onClick={() => setSelected(application)}
-                  className={"rounded-lg border p-3 text-left transition " + (
-                    selected?.id === application.id
-                      ? "border-violet-400 bg-violet-500/15"
-                      : "border-white/10 bg-black/10 hover:border-white/30"
-                  )}
-                >
-                  <div className="font-medium">{application.software_full_name || "未命名申请"}</div>
-                  <div className="mt-1 flex items-center gap-2 text-xs text-white/50">
-                    <Badge variant="outline">{application.status || "draft"}</Badge>
-                    {application.created_at ? new Date(application.created_at).toLocaleString() : ""}
-                  </div>
-                </button>
-              ))}
+    <Panel>
+      <div className="app-panel__header">
+        <div><h2 className="app-panel__title">申请信息</h2><p className="app-panel__description">选择申请并继续编辑，生成前请确认内容。</p></div>
+      </div>
+      {error && <div className="app-feedback app-feedback--error">{error}</div>}
+      {message && <div className="app-feedback app-feedback--success">{message}</div>}
+      {applications.length === 0 ? (
+        <EmptyState icon={<FileText size={22} />} title="还没有申请" description="先创建一条申请，再继续完善登记信息。" />
+      ) : (
+        <div className="app-panel__body">
+          <div className="query-application-list">
+            {applications.map((application) => <button type="button" className={`query-application ${selected?.id === application.id ? "query-application--selected" : ""}`} key={application.id} onClick={() => setSelected(application)}><span><strong>{application.software_full_name || "未填写软件全称"}</strong><small>{formatDateTime(application.updated_at || application.created_at)}</small></span><StatusBadge status={application.status} /></button>)}
+          </div>
+          {selected && selectedForm && <>
+            <CopyrightFormEditor form={selectedForm} onChange={(next) => setSelected({ ...selected, ...next })} disabled={disabled || working} />
+            <div className="form-actions">
+              <Button type="button" variant="outline" onClick={() => void enrich()} disabled={disabled || working}><Sparkles size={15} />AI 补全建议</Button>
+              <Button type="button" variant="ghost" onClick={() => void remove()} disabled={disabled || working}><Trash2 size={15} />删除</Button>
+              <Button type="button" onClick={() => void save()} disabled={disabled || working}>{working ? <LoaderCircle className="app-spin" size={15} /> : <Save size={15} />}保存修改</Button>
+              <Button type="button" variant="secondary" onClick={() => onReadyToGenerate({ tableTemplate: formToMarkdown(selectedForm), fileName: selectedForm.software_short_name || selectedForm.software_full_name || "software-copyright", formId: selected.id, skipAnalyze: true })} disabled={disabled || working}><ArrowRight size={15} />准备生成</Button>
             </div>
-            {selected && selectedForm && (
-              <>
-                <CopyrightFormEditor
-                  form={selectedForm}
-                  onChange={(next) => setSelected({ ...selected, ...next })}
-                  disabled={disabled || working}
-                />
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button onClick={save} disabled={disabled || working}>保存修改</Button>
-                  <Button variant="outline" onClick={enrich} disabled={disabled || working}>AI 智能补全</Button>
-                  <Button variant="destructive" onClick={remove} disabled={disabled || working}>删除申请</Button>
-                  <Button
-                    onClick={() => onReadyToGenerate({
-                      tableTemplate: formToMarkdown(selectedForm),
-                      fileName: selectedForm.software_short_name || selectedForm.software_full_name || "software-copyright",
-                      formId: selected.id,
-                      skipAnalyze: true,
-                    })}
-                    disabled={disabled || working}
-                  >
-                    进入材料生成
-                  </Button>
-                </div>
-              </>
-            )}
-          </>
-        )}
-      </CardContent>
-    </Card>
+          </>}
+        </div>
+      )}
+    </Panel>
   );
 }
