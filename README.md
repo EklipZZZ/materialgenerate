@@ -1,64 +1,59 @@
-# 统一软著申报系统
+# 软著申报助手
 
-本仓库同时包含 Cloudflare Pages 静态前端和唯一的 Render Node 后端。
+这是一个基于 Next.js、Vercel 和 Supabase 的软件著作权材料生成应用。
 
 ## 架构
 
 ```text
-Cloudflare Pages（Next.js 静态前端）
-  └─ Render Free Node API
-      ├─ 申请信息 CRUD
-      ├─ Supabase JWT 校验与数据存取
-      ├─ API Key AES-256-GCM 加密保存
-      ├─ OpenAI / DeepSeek 固定端点调用
-      ├─ AI 补全与 DOCX 生成
-      └─ Supabase Storage 私有文件管理
+Vercel
+  ├─ Next.js 页面
+  ├─ Next.js Node.js API Functions
+  └─ Python DOCX conversion function
 
-Supabase：Auth + PostgreSQL + 私有 Storage
+Supabase
+  ├─ Email Auth
+  ├─ applications
+  ├─ generation_records
+  └─ 私有 generated-documents Bucket
+
+OpenAI / DeepSeek
+  └─ 用户临时输入的 API Key
 ```
 
-用户只会访问两个公开地址：Pages 前端和 Render API。Supabase Storage 不需要自定义域名。
-
-## 目录
-
-- `src/`：Next.js 静态前端。
-- `server/`：Express + TypeScript API。
-- `assets/`：DOCX 转换脚本及模板。
-- `supabase/migrations/`：新 Supabase 项目的数据库迁移。
-- `DEPLOYMENT.md`：从零部署操作清单。
+用户的 API Key 只保存在当前浏览器标签页，并在当前请求中转发给固定的 OpenAI 或 DeepSeek 端点。系统不保存 Key，不接受任意 Base URL。
 
 ## 本地开发
 
 ```bash
 pnpm install
 pnpm dev
-pnpm dev:server
 ```
 
-Node 服务按 `.env.example` 配置本地 `.env`。不得提交 `.env`、服务端 Supabase 密钥或用户模型 Key。
+本地 `.env` 至少需要复制 `.env.example` 并填写 Supabase 公共变量和服务端变量。若要在本地生成 DOCX，还需要安装 `requirements.txt` 中的 Python 依赖。
 
-## 构建与测试
+## 构建与检查
 
 ```bash
-pnpm build:pages
-pnpm build:server
-pnpm --dir server test
+pnpm test
+pnpm ts-check
+pnpm lint
+pnpm build
 ```
 
-Pages 配置：
+Vercel 使用 Next.js 默认输出目录，不使用 `out`，也不使用 Dockerfile。
 
-```text
-Build command: pnpm build:pages
-Build output directory: out
-```
+## Supabase
 
-Render 使用根目录 `Dockerfile`，健康检查为 `/health`。完整环境变量和部署顺序见 `DEPLOYMENT.md`。
+按文件名顺序执行 `supabase/migrations/` 下的 3 个 SQL 文件，创建 Auth 用户关联的申请表、生成记录、索引和 RLS。Storage 中创建名为 `generated-documents` 的私有 Bucket。
+
+## 部署
+
+详细步骤见 [DEPLOYMENT.md](./DEPLOYMENT.md)。
 
 ## 安全边界
 
-- Node 从 Supabase Access Token 解析用户身份，所有服务端数据查询均显式限定 `user_id`。
-- API Key 只以 AES-256-GCM 密文保存，接口只返回末四位。
-- 模型端点和模型名称在源码中白名单固定，不接受自定义 Base URL。
-- OpenAI 和 DeepSeek 的错误响应正文不会写入日志或返回浏览器。
-- API 有基础 IP 限流；同一用户同一时间只运行一个文档生成任务。
-- Supabase Storage 只保存私有对象，下载时生成 15 分钟临时链接。
+- 所有 API 通过 Supabase Bearer Token 解析当前用户。
+- 服务端查询显式限制 `user_id`，不信任请求体中的用户 ID。
+- 生成文件只保存 Supabase Object Key，下载时生成 15 分钟临时链接。
+- API Key、完整提示词和上游错误正文不写入日志。
+- 旧 Express 服务、平台专用 SDK、查询码和微信用户 ID 不参与构建。

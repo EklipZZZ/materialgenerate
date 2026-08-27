@@ -98,7 +98,7 @@ export function formToMarkdown(form: CopyrightFormData): string {
 
 export function recordToFormData(record: Record<string, unknown>): CopyrightFormData {
   const enriched = record.enriched_data as Record<string, unknown> | null;
-  const base = enriched && record.status === "enriched" ? { ...record, ...enriched } : record;
+  const base = enriched ? { ...record, ...enriched } : record;
   return {
     id: String(base.id ?? ""),
     status: String(base.status ?? "draft"),

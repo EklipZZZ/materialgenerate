@@ -6,7 +6,7 @@ import {
   recordToFormData,
   type CopyrightFormData,
 } from "@/lib/copyright-form";
-import { API_URL, requireApiUrl } from "@/lib/api-base";
+import { apiEndpoint } from "@/lib/api-base";
 import { authorizedFetch } from "@/lib/auth";
 
 interface ApiEnvelope<T> {
@@ -34,7 +34,7 @@ async function unwrap<T>(response: Response): Promise<T> {
 }
 
 function endpoint(path: string): string {
-  return requireApiUrl(API_URL, "NEXT_PUBLIC_API_URL") + path;
+  return apiEndpoint(path);
 }
 
 export async function listApplications(): Promise<ApplicationRecord[]> {

@@ -31,7 +31,7 @@ export default function HomePage() {
         <div className="grid gap-4 md:grid-cols-3">
           {[
             ["申请管理", "保存并维护自己的申请记录，不再依赖提取码。"],
-            ["模型配置", "支持 OpenAI 与 DeepSeek，多条配置可切换，密钥仅服务端保存密文。"],
+            ["临时模型 Key", "支持 OpenAI 与 DeepSeek，API Key 仅在当前浏览器标签页暂存，不写入系统数据库。"],
             ["材料生成", "上传源码压缩包或自动生成源码文档，并下载 DOCX 材料。"],
           ].map(([title, description]) => (
             <div key={title} className="rounded-2xl border border-white/10 bg-white/[0.04] p-6">

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/components/auth-provider";
-import { API_URL, requireApiUrl } from "@/lib/api-base";
+import { apiEndpoint } from "@/lib/api-base";
 import { authorizedFetch } from "@/lib/auth";
 
 interface GenerationRecord {
@@ -26,7 +26,7 @@ export default function HistoryPage() {
 
   useEffect(() => {
     if (!user) return;
-    authorizedFetch(requireApiUrl(API_URL, "NEXT_PUBLIC_API_URL") + "/api/generation-records")
+    authorizedFetch(apiEndpoint("/api/generation-records"))
       .then(async (response) => {
         const body = (await response.json()) as Envelope<GenerationRecord[]> & { detail?: string };
         if (!response.ok) throw new Error(body.msg || body.detail || "加载历史失败");
@@ -39,9 +39,8 @@ export default function HistoryPage() {
     setError(null);
     try {
       const response = await authorizedFetch(
-        requireApiUrl(API_URL, "NEXT_PUBLIC_API_URL") +
-          "/api/generation-records/" + encodeURIComponent(recordId) +
-          "/download/" + encodeURIComponent(kind),
+        apiEndpoint("/api/generation-records/" + encodeURIComponent(recordId) +
+          "/download/" + encodeURIComponent(kind)),
       );
       const body = (await response.json()) as Envelope<{ url?: string }>;
       if (!response.ok || !body.data?.url) throw new Error(body.msg || "获取下载链接失败");

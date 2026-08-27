@@ -17,29 +17,27 @@ import {
   updateApplication,
   type ApplicationRecord,
 } from "@/lib/softreg-api";
-import { API_URL, requireApiUrl } from "@/lib/api-base";
+import { apiEndpoint } from "@/lib/api-base";
 import { authorizedFetch } from "@/lib/auth";
-import { listLlmConfigs, type LlmConfig } from "@/lib/llm-api";
+import type { ByokConfig } from "@/lib/byok";
 
 export interface QueryPanelGeneratePayload {
   tableTemplate: string;
   fileName: string;
   formId: string;
   skipAnalyze: boolean;
-  configId: string;
 }
 
 interface Props {
   disabled?: boolean;
   refreshToken?: number;
+  byok: ByokConfig | null;
   onReadyToGenerate: (payload: QueryPanelGeneratePayload) => void;
 }
 
-export function CopyrightQueryPanel({ disabled, refreshToken, onReadyToGenerate }: Props) {
+export function CopyrightQueryPanel({ disabled, refreshToken, byok, onReadyToGenerate }: Props) {
   const [applications, setApplications] = useState<ApplicationRecord[]>([]);
   const [selected, setSelected] = useState<ApplicationRecord | null>(null);
-  const [configs, setConfigs] = useState<LlmConfig[]>([]);
-  const [configId, setConfigId] = useState("");
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,10 +47,8 @@ export function CopyrightQueryPanel({ disabled, refreshToken, onReadyToGenerate 
     setLoading(true);
     setError(null);
     try {
-      const [records, llmConfigs] = await Promise.all([listApplications(), listLlmConfigs()]);
+      const records = await listApplications();
       setApplications(records);
-      setConfigs(llmConfigs);
-      setConfigId((current) => current || llmConfigs[0]?.id || "");
       setSelected((current) => {
         if (!current) return records[0] ?? null;
         return records.find((record) => record.id === current.id) ?? records[0] ?? null;
@@ -92,19 +88,19 @@ export function CopyrightQueryPanel({ disabled, refreshToken, onReadyToGenerate 
 
   async function enrich() {
     if (!selected?.id) return;
-    if (!configId) {
-      setError("请先在 API Key 配置页保存一条模型配置");
+    if (!byok?.apiKey.trim()) {
+      setError("请先输入 API Key");
       return;
     }
     setWorking(true);
     setError(null);
     try {
       const response = await authorizedFetch(
-        requireApiUrl(API_URL, "NEXT_PUBLIC_API_URL") + "/api/enrich",
+        apiEndpoint("/api/enrich"),
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ applicationId: selected.id, configId }),
+          body: JSON.stringify({ applicationId: selected.id, ...byok }),
         },
       );
       const body = (await response.json()) as { data?: Record<string, unknown>; msg?: string };
@@ -182,27 +178,12 @@ export function CopyrightQueryPanel({ disabled, refreshToken, onReadyToGenerate 
                   <Button onClick={save} disabled={disabled || working}>保存修改</Button>
                   <Button variant="outline" onClick={enrich} disabled={disabled || working}>AI 智能补全</Button>
                   <Button variant="destructive" onClick={remove} disabled={disabled || working}>删除申请</Button>
-                  <select
-                    className="h-10 rounded-md border border-white/20 bg-black/30 px-3 text-sm"
-                    value={configId}
-                    onChange={(event) => setConfigId(event.target.value)}
-                    disabled={working}
-                    aria-label="模型配置"
-                  >
-                    <option value="">选择模型配置</option>
-                    {configs.map((config) => (
-                      <option value={config.id} key={config.id}>
-                        {config.name} · {config.provider}/{config.model}
-                      </option>
-                    ))}
-                  </select>
                   <Button
                     onClick={() => onReadyToGenerate({
                       tableTemplate: formToMarkdown(selectedForm),
                       fileName: selectedForm.software_short_name || selectedForm.software_full_name || "software-copyright",
                       formId: selected.id,
                       skipAnalyze: true,
-                      configId,
                     })}
                     disabled={disabled || working}
                   >

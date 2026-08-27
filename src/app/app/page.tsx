@@ -8,12 +8,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useAuth } from "@/components/auth-provider";
 import { ApplicationForm } from "@/components/application-form";
+import { ByokPanel } from "@/components/byok-panel";
 import {
   CopyrightQueryPanel,
   type QueryPanelGeneratePayload,
 } from "@/components/copyright-query-panel";
-import { API_URL, requireApiUrl } from "@/lib/api-base";
+import { apiEndpoint } from "@/lib/api-base";
 import { authorizedFetch } from "@/lib/auth";
+import { uploadSourceFile } from "@/lib/source-upload";
+import type { ByokConfig } from "@/lib/byok";
 
 interface GenerationResult {
   sourceCodeDocx?: string;
@@ -35,6 +38,7 @@ export default function AppPage() {
   const { user, loading, signOut } = useAuth();
   const [refreshToken, setRefreshToken] = useState(0);
   const [payload, setPayload] = useState<QueryPanelGeneratePayload | null>(null);
+  const [byok, setByok] = useState<ByokConfig | null>(null);
   const [sourceCodeFile, setSourceCodeFile] = useState<File | null>(null);
   const [currentStep, setCurrentStep] = useState("");
   const [message, setMessage] = useState("");
@@ -52,8 +56,8 @@ export default function AppPage() {
       setError("请先在我的申请中选择一条申请");
       return;
     }
-    if (!payload.configId) {
-      setError("请先保存并选择 API Key 配置");
+    if (!byok?.apiKey.trim()) {
+      setError("请先输入 API Key");
       return;
     }
     setGenerating(true);
@@ -64,16 +68,26 @@ export default function AppPage() {
     const controller = new AbortController();
     abortRef.current = controller;
     try {
-      const body = new FormData();
-      body.append("application_id", payload.formId);
-      body.append("config_id", payload.configId);
-      body.append("skip_analyze", payload.skipAnalyze ? "1" : "0");
-      body.append("table_template", payload.tableTemplate);
-      if (sourceCodeFile) body.append("source_code_file", sourceCodeFile);
-      const response = await authorizedFetch(
-        requireApiUrl(API_URL, "NEXT_PUBLIC_API_URL") + "/api/generate",
-        { method: "POST", body, signal: controller.signal },
-      );
+      let sourceObjectKey: string | undefined;
+      if (sourceCodeFile) {
+        setMessage("正在上传源码压缩包…");
+        sourceObjectKey = (await uploadSourceFile(sourceCodeFile)).path;
+      }
+      const response = await authorizedFetch(apiEndpoint("/api/generate"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          applicationId: payload.formId,
+          provider: byok.provider,
+          model: byok.model,
+          apiKey: byok.apiKey,
+          tableTemplate: payload.tableTemplate,
+          skipAnalyze: payload.skipAnalyze,
+          sourceObjectKey,
+          sourceFileName: sourceCodeFile?.name,
+        }),
+        signal: controller.signal,
+      });
       if (!response.ok) {
         const bodyText = await response.text();
         throw new Error(bodyText || "生成请求失败");
@@ -130,12 +144,14 @@ export default function AppPage() {
       <div className="mx-auto max-w-7xl space-y-8 py-8">
         <div>
           <h1 className="text-3xl font-bold">申报工作台</h1>
-          <p className="mt-2 text-white/60">{user.email} · 先提交申请，再选择模型配置生成材料。</p>
+          <p className="mt-2 text-white/60">{user.email} · 先提交申请，再输入临时 API Key 生成材料。</p>
         </div>
         <ApplicationForm onCreated={() => setRefreshToken((value) => value + 1)} />
+        <ByokPanel value={byok} onChange={setByok} />
         <CopyrightQueryPanel
           disabled={generating}
           refreshToken={refreshToken}
+          byok={byok}
           onReadyToGenerate={setPayload}
         />
         <Card className="border-white/10 bg-white/[0.04]">
