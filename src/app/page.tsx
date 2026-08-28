@@ -55,7 +55,7 @@ export default function HomePage() {
           <div className="marketing-preview__bar"><span /><span /><span /><small>申报空间 / 总览</small></div>
           <div className="marketing-preview__body">
             <div className="marketing-preview__side"><strong>软著申报助手</strong><span className="marketing-preview__side-active">总览</span><span>我的申请</span><span>材料生成</span><span>生成记录</span><span>设置</span></div>
-            <div className="marketing-preview__content"><div className="marketing-preview__heading"><span>总览</span><small>最近申请与生成进度</small></div><div className="marketing-preview__cards"><div className="marketing-preview__card"><span>编辑中的申请</span><strong>02</strong></div><div className="marketing-preview__card"><span>生成记录</span><strong>08</strong></div></div><div className="marketing-preview__table"><span>智能材料管理系统</span><span>材料生成　　已完成</span><span>企业服务平台　　编辑中</span></div></div>
+            <div className="marketing-preview__content"><div className="marketing-preview__heading"><span>总览</span><small>最近申请与生成进度</small></div><div className="marketing-preview__cards"><div className="marketing-preview__card"><span className="marketing-preview__card-label">编辑中的申请</span><strong>02</strong></div><div className="marketing-preview__card"><span className="marketing-preview__card-label">生成记录</span><strong>08</strong></div></div><div className="marketing-preview__table"><span>智能材料管理系统</span><span>材料生成　　已完成</span><span>企业服务平台　　编辑中</span></div></div>
           </div>
         </div>
       </section>
