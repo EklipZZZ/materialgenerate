@@ -3,7 +3,8 @@ import { streamLlm } from "./llm";
 import { cleanCodeContent, cleanManualContent, manualModules, sourceModules } from "./generation-prompts";
 import { extractSourceCode } from "./source-extractor";
 import { convertMarkdown } from "./converter";
-import { preflightPdf, renderMarkdownPdf } from "./pdf-generator";
+import { preflightPdf } from "./pdf-generator";
+import { renderPdfDocument } from "./pdf-client";
 import type { ApplicationRow } from "./applications";
 import templateAnalysisConfig from "../../assets/template_analysis_cfg.json";
 import sourceCodeConfig from "../../assets/source_code_generation_cfg.json";
@@ -230,12 +231,14 @@ export async function generateMaterials(input: GenerationInput): Promise<Generat
     convertMarkdown("code", sourceMarkdown, softwareName, version, input.requestUrl, signal),
     convertMarkdown("manual", manualMarkdown, softwareName, version, input.requestUrl, signal),
   ]);
-  emit({ step: "convert", message: "DOCX 文档生成完成，正在生成源代码 PDF…" });
-  const sourcePdfResult = await renderMarkdownPdf(sourceMarkdown, softwareName, version, "code", signal);
+  emit({ step: "convert", message: "DOCX 文档生成完成，正在并行生成源代码、用户手册和摘要 PDF…" });
+  const [sourcePdfResult, manualPdfResult, summaryPdfResult] = await Promise.all([
+    renderPdfDocument(sourceMarkdown, softwareName, version, "code", input.requestUrl, signal),
+    renderPdfDocument(manualMarkdown, softwareName, version, "manual", input.requestUrl, signal),
+    renderPdfDocument(collectionMarkdown, softwareName, version, "summary", input.requestUrl, signal),
+  ]);
   emit({ step: "convert", message: `源代码 PDF 生成完成，共${sourcePdfResult.pageCount}页` });
-  const manualPdfResult = await renderMarkdownPdf(manualMarkdown, softwareName, version, "manual", signal);
   emit({ step: "convert", message: `用户手册 PDF 生成完成，共${manualPdfResult.pageCount}页` });
-  const summaryPdfResult = await renderMarkdownPdf(collectionMarkdown, softwareName, version, "summary", signal);
   emit({ step: "convert", message: `申请信息摘要 PDF 生成完成，共${summaryPdfResult.pageCount}页` });
   const pdfWarnings = [
     ...preflightPdf(sourcePdfResult, softwareName, version, sourceMarkdown, "code"),

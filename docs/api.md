@@ -263,6 +263,10 @@ data: {"step":"source_code","message":"正在生成源代码文档…","data":{}
 
 公开健康检查，返回服务名称和 `ok: true`。
 
+### `POST /api/pdf`
+
+内部 PDF 渲染接口，仅由 `/api/generate` 通过 `CONVERTER_SHARED_SECRET` 对应的 `x-pdf-secret` 请求头调用。请求体为 `kind`、`markdown`、`softwareName` 和 `version`，成功时直接返回 `application/pdf`，并通过响应头返回页数和文本统计。前端不得直接调用该接口，也不得记录共享密钥。
+
 ## 安全边界
 
 接口只允许当前认证用户访问自己的申请、材料、任务、历史和模型配置。Supabase service role key 只能在服务端环境变量中使用，不能写入客户端代码或文档示例。

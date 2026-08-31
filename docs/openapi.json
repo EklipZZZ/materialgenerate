@@ -1212,6 +1212,93 @@
         }
       }
     },
+    "/api/pdf": {
+      "post": {
+        "tags": [
+          "辅助/内部"
+        ],
+        "summary": "内部 PDF 渲染服务",
+        "description": "仅供生成任务通过 CONVERTER_SHARED_SECRET 调用，返回 application/pdf，不对前端用户开放。",
+        "security": [
+          {
+            "internalPdfSecret": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PdfRenderRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "PDF 文件。",
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或登录凭证无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在或不属于当前用户。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "当前资源状态冲突，例如申请已有运行中的生成任务。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器或上游服务处理失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/generation-jobs": {
       "get": {
         "tags": [
@@ -2863,6 +2950,41 @@
         ],
         "description": "启动软著材料生成任务。生成接口以 SSE 返回进度事件。"
       },
+      "PdfRenderRequest": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "code",
+              "manual",
+              "summary"
+            ]
+          },
+          "markdown": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000000
+          },
+          "softwareName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          },
+          "version": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        },
+        "required": [
+          "kind",
+          "markdown",
+          "softwareName",
+          "version"
+        ],
+        "description": "内部 PDF 渲染请求，由生成任务使用共享密钥调用。"
+      },
       "LlmConfigWriteRequest": {
         "type": "object",
         "properties": {
@@ -3652,6 +3774,12 @@
         "scheme": "bearer",
         "bearerFormat": "JWT",
         "description": "Supabase Auth access token。"
+      },
+      "internalPdfSecret": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-pdf-secret",
+        "description": "仅供服务端生成流程使用的内部共享密钥。"
       }
     }
   }

@@ -185,6 +185,17 @@ export const generateRequestSchema = z.object({
   description: "启动软著材料生成任务。生成接口以 SSE 返回进度事件。",
 });
 
+export const pdfRenderRequestSchema = z.object({
+  kind: z.enum(["code", "manual", "summary"]),
+  // Do not trim source code: leading indentation is part of the material.
+  markdown: z.string().min(1).max(2_000_000),
+  softwareName: z.string().trim().min(1).max(300),
+  version: z.string().trim().min(1).max(100),
+}).meta({
+  id: "PdfRenderRequest",
+  description: "内部 PDF 渲染请求，由生成任务使用共享密钥调用。",
+});
+
 export const llmTestRequestSchema = z.object({
   llmConfigId: llmConfigIdSchema,
 }).meta({

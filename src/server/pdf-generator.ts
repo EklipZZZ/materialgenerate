@@ -117,6 +117,13 @@ function addPageChrome(document: PDFKit.PDFDocument, pageNumber: number, title: 
   document.y = MARGIN + 14;
 }
 
+function codePdfLines(markdown: string): string[] {
+  return markdown
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .flatMap((line) => splitForPdf(line || " ", CODE_CHUNK_CHARS));
+}
+
 export interface PdfRenderResult {
   buffer: Buffer;
   pageCount: number;
@@ -174,37 +181,45 @@ export async function renderMarkdownPdf(
   });
   document.moveDown(0.8);
 
-  const rows = markdownRows(markdown, kind === "code");
   const sourceLineCount = markdown.replace(/\r\n/g, "\n").split("\n").length;
-  for (const [index, row] of rows.entries()) {
-    if (index % 100 === 0) {
+  if (kind === "code") {
+    // PDFKit spends a disproportionate amount of time when every source line
+    // is submitted as a separate text operation. Render bounded blocks instead
+    // so long source archives fit within Vercel's Serverless Function limit.
+    const lines = codePdfLines(markdown);
+    const codeFont = /[\u3400-\u9fff]/.test(markdown) ? fontPath : "Courier";
+    document.font(codeFont).fontSize(8.2).fillColor("#344054");
+    for (let start = 0; start < lines.length; start += 200) {
       throwIfAborted(signal);
-      await yieldToEventLoop();
-    }
-    if (document.y > 770) document.addPage();
-    if (row.kind === "blank") {
-      document.moveDown(0.35);
-      continue;
-    }
-    if (row.kind === "heading") {
-      document.font(fontPath).fontSize(12).fillColor("#1d2939").text(row.text, { continued: false });
-      document.moveDown(0.25);
-      continue;
-    }
-    if (row.kind === "code") {
-      // Keep ordinary source lines truly monospaced while retaining the
-      // embedded CJK font for the occasional Chinese comment/string.
-      document.font(/[\u3400-\u9fff]/.test(row.text) ? fontPath : "Courier").fontSize(8.2).fillColor("#344054").text(row.text, {
+      document.text(lines.slice(start, start + 200).join("\n"), {
         lineGap: 1,
         width: A4_WIDTH - MARGIN * 2,
       });
-      continue;
+      await yieldToEventLoop();
     }
-    document.font(fontPath).fontSize(10.2).fillColor("#101828").text(row.text, {
-      lineGap: 3,
-      width: A4_WIDTH - MARGIN * 2,
-    });
-    document.moveDown(0.2);
+  } else {
+    const rows = markdownRows(markdown);
+    for (const [index, row] of rows.entries()) {
+      if (index % 100 === 0) {
+        throwIfAborted(signal);
+        await yieldToEventLoop();
+      }
+      if (document.y > 770) document.addPage();
+      if (row.kind === "blank") {
+        document.moveDown(0.35);
+        continue;
+      }
+      if (row.kind === "heading") {
+        document.font(fontPath).fontSize(12).fillColor("#1d2939").text(row.text, { continued: false });
+        document.moveDown(0.25);
+        continue;
+      }
+      document.font(fontPath).fontSize(10.2).fillColor("#101828").text(row.text, {
+        lineGap: 3,
+        width: A4_WIDTH - MARGIN * 2,
+      });
+      document.moveDown(0.2);
+    }
   }
   throwIfAborted(signal);
 

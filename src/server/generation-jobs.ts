@@ -20,10 +20,13 @@ export interface GenerationJobRow {
   updated_at: string;
 }
 
+const DEFAULT_STALE_JOB_MS = 6 * 60 * 1000;
 const staleJobMessage = "上一次生成请求已中断，任务已自动标记为失败，可以重新生成";
 
 async function recoverStaleGenerationJob(input: { userId: string; applicationId: string }): Promise<boolean> {
-  const staleMs = Math.max(60_000, getServerEnv().generationJobStaleMs);
+  // The generate function is capped at 300 seconds on the current Vercel
+  // plan. A dead request must not leave the user locked out for 30 minutes.
+  const staleMs = Math.max(60_000, Math.min(getServerEnv().generationJobStaleMs, DEFAULT_STALE_JOB_MS));
   const staleBefore = new Date(Date.now() - staleMs).toISOString();
   const now = new Date().toISOString();
   const result = await getSupabaseAdmin()
@@ -140,7 +143,23 @@ export async function getLatestOwnedGenerationJob(applicationId: string, userId:
     .limit(1)
     .maybeSingle();
   if (result.error) throw new Error("generation job lookup failed");
-  return result.data as GenerationJobRow | null;
+  const job = result.data as GenerationJobRow | null;
+  if (job && (job.status === "queued" || job.status === "running")) {
+    const staleMs = Math.max(60_000, Math.min(getServerEnv().generationJobStaleMs, DEFAULT_STALE_JOB_MS));
+    if (Date.now() - new Date(job.updated_at).getTime() > staleMs && await recoverStaleGenerationJob({ userId, applicationId })) {
+      const refreshed = await getSupabaseAdmin()
+        .from("generation_jobs")
+        .select("*")
+        .eq("application_id", applicationId)
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (refreshed.error) throw new Error("generation job lookup failed");
+      return refreshed.data as GenerationJobRow | null;
+    }
+  }
+  return job;
 }
 
 export async function getOwnedJobEvents(jobId: string, userId: string) {

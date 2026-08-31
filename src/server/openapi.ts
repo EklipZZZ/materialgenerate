@@ -15,6 +15,7 @@ import {
   materialIdSchema,
   materialKindSchema,
   materialUploadSchema,
+  pdfRenderRequestSchema,
   sourceUploadSchema,
   sourceFeedbackRequestSchema,
   sourceFeedbackResponseSchema,
@@ -268,6 +269,12 @@ export function buildOpenApiDocument() {
           bearerFormat: "JWT",
           description: "Supabase Auth access token。",
         },
+        internalPdfSecret: {
+          type: "apiKey",
+          in: "header",
+          name: "x-pdf-secret",
+          description: "仅供服务端生成流程使用的内部共享密钥。",
+        },
       },
     },
     paths: {
@@ -375,6 +382,22 @@ export function buildOpenApiDocument() {
                 },
               },
             },
+          },
+        },
+      },
+      "/api/pdf": {
+        post: {
+          tags: ["辅助/内部"],
+          summary: "内部 PDF 渲染服务",
+          description: "仅供生成任务通过 CONVERTER_SHARED_SECRET 调用，返回 application/pdf，不对前端用户开放。",
+          security: [{ internalPdfSecret: [] }],
+          requestBody: jsonRequest(pdfRenderRequestSchema),
+          responses: {
+            "200": {
+              description: "PDF 文件。",
+              content: { "application/pdf": { schema: { type: "string", format: "binary" } } },
+            },
+            ...standardErrorResponses,
           },
         },
       },

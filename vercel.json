@@ -10,6 +10,10 @@
     "src/app/api/generate/route.ts": {
       "maxDuration": 300,
       "includeFiles": "node_modules/@fontsource/noto-sans-sc/files/noto-sans-sc-chinese-simplified-400-normal.woff"
+    },
+    "src/app/api/pdf/route.ts": {
+      "maxDuration": 240,
+      "includeFiles": "node_modules/@fontsource/noto-sans-sc/files/noto-sans-sc-chinese-simplified-400-normal.woff"
     }
   }
 }

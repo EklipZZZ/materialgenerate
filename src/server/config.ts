@@ -21,7 +21,7 @@ function required(name: string, value: string | undefined): string {
 
 export function getServerEnv(): ServerEnv {
   if (cachedEnv) return cachedEnv;
-  const generationJobStaleMs = Number(process.env.GENERATION_JOB_STALE_MS || 30 * 60 * 1000);
+  const generationJobStaleMs = Number(process.env.GENERATION_JOB_STALE_MS || 6 * 60 * 1000);
   cachedEnv = {
     supabaseUrl: required("SUPABASE_URL", process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL),
     supabaseServiceRoleKey: required("SUPABASE_SERVICE_ROLE_KEY", process.env.SUPABASE_SERVICE_ROLE_KEY),
@@ -32,7 +32,7 @@ export function getServerEnv(): ServerEnv {
     llmTimeoutMs: Number(process.env.LLM_REQUEST_TIMEOUT_MS || 120_000),
     generationJobStaleMs: Number.isFinite(generationJobStaleMs) && generationJobStaleMs > 0
       ? generationJobStaleMs
-      : 30 * 60 * 1000,
+      : 6 * 60 * 1000,
   };
   return cachedEnv;
 }
