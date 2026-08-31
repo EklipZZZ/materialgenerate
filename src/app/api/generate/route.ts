@@ -16,9 +16,11 @@ import { DocumentConversionError } from "@/server/converter";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 600;
+// Vercel Hobby limits Serverless Functions to 300 seconds. Keep a soft
+// deadline below that limit so the job can persist a useful failure state.
+export const maxDuration = 300;
 
-const GENERATION_SOFT_TIMEOUT_MS = 540_000;
+const GENERATION_SOFT_TIMEOUT_MS = 270_000;
 
 const bodySchema = generateRequestSchema;
 
