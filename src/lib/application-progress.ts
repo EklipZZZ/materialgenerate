@@ -1,4 +1,5 @@
 import type { CopyrightFormData } from "@/lib/copyright-form";
+import { isMainFunctionsComplete, validateCopyrightTextFields } from "@/lib/copyright-constraints";
 
 const completionFields: Array<keyof CopyrightFormData> = [
   "software_full_name",
@@ -20,12 +21,18 @@ function hasValue(value: unknown): boolean {
   return typeof value === "string" ? value.trim().length > 0 : Boolean(value);
 }
 
+function fieldComplete(field: keyof CopyrightFormData, value: unknown): boolean {
+  if (field === "main_functions") return isMainFunctionsComplete(value);
+  if (!hasValue(value)) return false;
+  return validateCopyrightTextFields({ [field]: value }).length === 0;
+}
+
 export function getApplicationProgress(form: CopyrightFormData): {
   completed: number;
   total: number;
   percent: number;
 } {
-  const fieldsCompleted = completionFields.filter((field) => hasValue(form[field])).length;
+  const fieldsCompleted = completionFields.filter((field) => fieldComplete(field, form[field])).length;
   const holdersCompleted = form.copyright_holders.length > 0 && form.copyright_holders.every((holder) => (
     hasValue(holder.name)
     && hasValue(holder.document_type)

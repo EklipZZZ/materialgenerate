@@ -204,7 +204,14 @@ export default function GenerationDetailPage() {
 
       if (!response.ok) {
         const bodyText = await response.text();
-        throw new Error(bodyText || "生成请求失败");
+        let message = bodyText || "生成请求失败";
+        try {
+          const body = JSON.parse(bodyText) as { msg?: string };
+          message = body.msg || message;
+        } catch {
+          // Keep the plain response when the server did not return JSON.
+        }
+        throw new Error(message);
       }
 
       const reader = response.body?.getReader();

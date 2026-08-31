@@ -195,6 +195,7 @@ export async function extractSourceCode(
     content: contents.join("\n"),
     fileCount: contents.length,
     fileList,
+    lineCount: totalLines,
     summary: "已读取 " + contents.length + " 个源代码文件，约 " + totalLines + " 行。",
   };
 }

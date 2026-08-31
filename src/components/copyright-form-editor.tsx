@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +11,18 @@ import {
   type CopyrightHolder,
   type HolderType,
 } from "@/lib/copyright-form";
+import {
+  COPYRIGHT_MAIN_FUNCTIONS_MAX,
+  COPYRIGHT_MAIN_FUNCTIONS_MIN,
+  COPYRIGHT_SHORT_TEXT_MAX,
+  COPYRIGHT_TECHNICAL_FEATURES_MAX,
+  characterCount,
+} from "@/lib/copyright-constraints";
+import {
+  PROGRAMMING_LANGUAGE_OPTIONS,
+  SOFTWARE_CATEGORY_OPTIONS,
+  TARGET_INDUSTRY_OPTIONS,
+} from "@/lib/copyright-options";
 
 interface Props {
   form: CopyrightFormData;
@@ -32,12 +45,65 @@ const developmentMethodLabels = {
   cooperative: "合作开发",
 } as const;
 
+const CUSTOM_OPTION = "__custom__";
+
+interface ChoiceOrCustomFieldProps {
+  id: string;
+  label: string;
+  value: string;
+  options: readonly string[];
+  onChange: (value: string) => void;
+  disabled?: boolean;
+  maxLength?: number;
+}
+
+function ChoiceOrCustomField({ id, label, value, options, onChange, disabled, maxLength }: ChoiceOrCustomFieldProps) {
+  const [customMode, setCustomMode] = useState(() => Boolean(value && !options.includes(value)));
+  const showingCustom = !options.includes(value) && (customMode || Boolean(value));
+
+  return (
+    <div className="form-field">
+      <label className="form-label" htmlFor={id}>{label}</label>
+      <select
+        id={id}
+        className="app-select"
+        value={showingCustom ? CUSTOM_OPTION : value}
+        onChange={(event) => {
+          if (event.target.value === CUSTOM_OPTION) {
+            setCustomMode(true);
+            onChange("");
+          } else {
+            setCustomMode(false);
+            onChange(event.target.value);
+          }
+        }}
+        disabled={disabled}
+      >
+        <option value="">请选择</option>
+        {options.map((option) => <option value={option} key={option}>{option}</option>)}
+        <option value={CUSTOM_OPTION}>自定义填写</option>
+      </select>
+      {showingCustom && (
+        <Input
+          className="form-field__custom-input"
+          aria-label={`${label}自定义内容`}
+          value={value}
+          maxLength={maxLength}
+          placeholder={`填写${label}`}
+          onChange={(event) => onChange(event.target.value)}
+          disabled={disabled}
+        />
+      )}
+    </div>
+  );
+}
+
 export function CopyrightFormEditor({ form, onChange, disabled }: Props) {
   const set = <K extends keyof CopyrightFormData>(key: K, value: CopyrightFormData[K]) => {
     onChange({ ...form, [key]: value });
   };
 
-  const input = (key: keyof CopyrightFormData, label: string, type = "text", placeholder?: string) => (
+  const input = (key: keyof CopyrightFormData, label: string, type = "text", placeholder?: string, maxLength?: number) => (
     <div className="form-field" key={key}>
       <label className="form-label" htmlFor={String(key)}>{label}</label>
       <Input
@@ -46,6 +112,7 @@ export function CopyrightFormEditor({ form, onChange, disabled }: Props) {
         min={type === "number" ? 0 : undefined}
         value={String(form[key] ?? "")}
         placeholder={placeholder}
+        maxLength={maxLength}
         onChange={(event) => {
           const value = key === "source_code_lines"
             ? Number.parseInt(event.target.value, 10) || 0
@@ -97,7 +164,15 @@ export function CopyrightFormEditor({ form, onChange, disabled }: Props) {
           {input("software_full_name", "软件全称")}
           {input("software_short_name", "软件简称")}
           {input("version", "版本号")}
-          {input("software_category", "软件分类")}
+          <ChoiceOrCustomField
+            id="software_category"
+            label="软件分类"
+            value={form.software_category}
+            options={SOFTWARE_CATEGORY_OPTIONS}
+            maxLength={COPYRIGHT_SHORT_TEXT_MAX}
+            onChange={(value) => set("software_category", value)}
+            disabled={disabled}
+          />
           {input("development_date", "开发完成日期", "date")}
           <div className="form-field">
             <label className="form-label" htmlFor="work_type">软件作品说明</label>
@@ -175,14 +250,12 @@ export function CopyrightFormEditor({ form, onChange, disabled }: Props) {
                     <label className="form-label" htmlFor={`holder-${index}-city`}>城市</label>
                     <Input id={`holder-${index}-city`} value={holder.city} onChange={(event) => setHolder(index, { city: event.target.value })} disabled={disabled} />
                   </div>
-                  <div className="form-field">
-                    <label className="form-label" htmlFor={`holder-${index}-date`}>{holder.holder_type === "person" ? "出生日期" : "成立日期"}</label>
-                    <Input id={`holder-${index}-date`} type="date" value={holder.birth_or_established_date || ""} onChange={(event) => setHolder(index, { birth_or_established_date: event.target.value })} disabled={disabled} />
-                  </div>
-                  <div className="form-field">
-                    <label className="form-label" htmlFor={`holder-${index}-park`}>园区（可选）</label>
-                    <Input id={`holder-${index}-park`} value={holder.park || ""} onChange={(event) => setHolder(index, { park: event.target.value })} disabled={disabled} />
-                  </div>
+                  {holder.holder_type === "person" && (
+                    <div className="form-field">
+                      <label className="form-label" htmlFor={`holder-${index}-birth-date`}>出生日期</label>
+                      <Input id={`holder-${index}-birth-date`} type="date" value={holder.birth_or_established_date || ""} onChange={(event) => setHolder(index, { birth_or_established_date: event.target.value })} disabled={disabled} />
+                    </div>
+                  )}
                 </div>
               </div>
             );
@@ -234,7 +307,7 @@ export function CopyrightFormEditor({ form, onChange, disabled }: Props) {
       <section className="form-section">
         <div className="form-section__header">
           <h2>申请人和联系人</h2>
-          <p>申请人可以是著作权人，也可以指定代理人办理；地址和联系方式由用户自行确认。</p>
+          <p>申请人、地址和联系人信息均可暂不填写；如果选择代理人办理，再按实际情况补充。</p>
         </div>
         <div className="form-grid">
           <div className="form-field">
@@ -260,13 +333,21 @@ export function CopyrightFormEditor({ form, onChange, disabled }: Props) {
           <p>用于说明软件开发工具、运行平台和技术栈。</p>
         </div>
         <div className="form-grid">
-          {input("development_hardware", "开发硬件环境")}
-          {input("runtime_hardware", "运行硬件环境")}
-          {input("development_os", "开发操作系统")}
-          {input("runtime_platform", "运行平台")}
-          {input("development_tools", "开发工具")}
-          {input("runtime_environment", "运行环境")}
-          {input("programming_language", "编程语言")}
+          {input("development_hardware", "开发的硬件环境", "text", undefined, COPYRIGHT_SHORT_TEXT_MAX)}
+          {input("runtime_hardware", "运行的硬件环境", "text", undefined, COPYRIGHT_SHORT_TEXT_MAX)}
+          {input("development_os", "开发操作系统", "text", undefined, COPYRIGHT_SHORT_TEXT_MAX)}
+          {input("runtime_platform", "运行平台操作系统", "text", undefined, COPYRIGHT_SHORT_TEXT_MAX)}
+          {input("development_tools", "软件开发环境工具", "text", undefined, COPYRIGHT_SHORT_TEXT_MAX)}
+          {input("runtime_environment", "软件运行支撑环境", "text", undefined, COPYRIGHT_SHORT_TEXT_MAX)}
+          <ChoiceOrCustomField
+            id="programming_language"
+            label="编程语言"
+            value={form.programming_language}
+            options={PROGRAMMING_LANGUAGE_OPTIONS}
+            maxLength={COPYRIGHT_SHORT_TEXT_MAX}
+            onChange={(value) => set("programming_language", value)}
+            disabled={disabled}
+          />
           {input("source_code_lines", "源码代码行数", "number")}
         </div>
       </section>
@@ -277,16 +358,29 @@ export function CopyrightFormEditor({ form, onChange, disabled }: Props) {
           <p>尽量使用客观、完整的业务描述，方便后续生成源代码文档和用户手册。</p>
         </div>
         <div className="form-grid">
-          {input("development_purpose", "开发目的")}
-          {input("target_industry", "面向领域 / 行业")}
+          {input("development_purpose", "开发目的", "text", undefined, COPYRIGHT_SHORT_TEXT_MAX)}
+          <ChoiceOrCustomField
+            id="target_industry"
+            label="面向领域 / 行业"
+            value={form.target_industry}
+            options={TARGET_INDUSTRY_OPTIONS}
+            maxLength={COPYRIGHT_SHORT_TEXT_MAX}
+            onChange={(value) => set("target_industry", value)}
+            disabled={disabled}
+          />
           <div className="form-field form-field--full">
-            <label className="form-label" htmlFor="main_functions">主要功能</label>
-            <Textarea id="main_functions" className="min-h-36" value={form.main_functions} onChange={(event) => set("main_functions", event.target.value)} disabled={disabled} placeholder="建议填写软件解决的问题、主要模块和用户操作流程。" />
-            <span className="form-hint">建议填写 500–1300 字。</span>
+            <label className="form-label" htmlFor="main_functions">软件的主要功能</label>
+            <Textarea id="main_functions" className="min-h-36" maxLength={COPYRIGHT_MAIN_FUNCTIONS_MAX} value={form.main_functions} onChange={(event) => set("main_functions", event.target.value)} disabled={disabled} placeholder="请完整描述软件解决的问题、主要模块、关键功能和用户操作流程。" />
+            <span className={characterCount(form.main_functions) > 0 && (characterCount(form.main_functions) < COPYRIGHT_MAIN_FUNCTIONS_MIN || characterCount(form.main_functions) > COPYRIGHT_MAIN_FUNCTIONS_MAX) ? "form-hint form-hint--error" : "form-hint"}>
+              当前 {characterCount(form.main_functions)} / {COPYRIGHT_MAIN_FUNCTIONS_MIN}～{COPYRIGHT_MAIN_FUNCTIONS_MAX} 字符
+            </span>
           </div>
           <div className="form-field form-field--full">
-            <label className="form-label" htmlFor="technical_features">技术特点</label>
-            <Textarea id="technical_features" className="min-h-24" value={form.technical_features} onChange={(event) => set("technical_features", event.target.value)} disabled={disabled} placeholder="例如：权限管理、数据处理、接口服务、部署方式等。" />
+            <label className="form-label" htmlFor="technical_features">软件技术特点</label>
+            <Textarea id="technical_features" className="min-h-24" maxLength={COPYRIGHT_TECHNICAL_FEATURES_MAX} value={form.technical_features} onChange={(event) => set("technical_features", event.target.value)} disabled={disabled} placeholder="例如：权限管理、数据处理、接口服务、部署方式等。" />
+            <span className={characterCount(form.technical_features) > COPYRIGHT_TECHNICAL_FEATURES_MAX ? "form-hint form-hint--error" : "form-hint"}>
+              当前 {characterCount(form.technical_features)} / {COPYRIGHT_TECHNICAL_FEATURES_MAX} 字符
+            </span>
           </div>
         </div>
       </section>

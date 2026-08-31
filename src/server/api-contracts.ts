@@ -1,9 +1,22 @@
 import { z } from "zod";
 import { llmConfigInputSchema } from "./models.ts";
+import {
+  COPYRIGHT_MAIN_FUNCTIONS_MAX,
+  COPYRIGHT_MAIN_FUNCTIONS_MIN,
+  COPYRIGHT_SHORT_TEXT_MAX,
+  COPYRIGHT_TECHNICAL_FEATURES_MAX,
+} from "../lib/copyright-constraints.ts";
+import { SOURCE_FEEDBACK_FIELDS } from "../lib/source-feedback.ts";
 
 const shortText = z.string().trim().max(300);
 const longText = z.string().trim().max(20_000);
 const dateText = z.string().trim().max(40);
+const registrationShortText = z.string().trim().max(COPYRIGHT_SHORT_TEXT_MAX);
+const technicalFeaturesText = z.string().trim().max(COPYRIGHT_TECHNICAL_FEATURES_MAX);
+const mainFunctionsText = z.string().trim().max(COPYRIGHT_MAIN_FUNCTIONS_MAX).refine(
+  (value) => value.length === 0 || Array.from(value).length >= COPYRIGHT_MAIN_FUNCTIONS_MIN,
+  `软件的主要功能需填写 ${COPYRIGHT_MAIN_FUNCTIONS_MIN}～${COPYRIGHT_MAIN_FUNCTIONS_MAX} 字符`,
+);
 
 export const applicationIdSchema = z.string().uuid();
 export const materialIdSchema = z.string().uuid();
@@ -11,9 +24,8 @@ export const generationJobIdSchema = z.string().uuid();
 export const generationRecordIdSchema = z.string().uuid();
 export const llmConfigIdSchema = z.string().uuid();
 
-export const copyrightHolderFields = z.object({
+const copyrightHolderCommonFields = {
   id: z.string().uuid().optional(),
-  holder_type: z.enum(["person", "organization"]),
   name: shortText.min(1, "请填写著作权人名称"),
   category: shortText.min(1, "请填写著作权人类别"),
   document_type: shortText.min(1, "请选择证件类型"),
@@ -21,19 +33,30 @@ export const copyrightHolderFields = z.object({
   nationality: shortText.min(1, "请填写国籍"),
   province: shortText,
   city: shortText,
-  park: shortText.optional(),
-  birth_or_established_date: dateText.optional(),
   sort_order: z.number().int().min(0).max(1000).optional(),
-}).strict().meta({
+};
+
+const personHolderFields = z.object({
+  ...copyrightHolderCommonFields,
+  holder_type: z.literal("person"),
+  birth_or_established_date: dateText.optional(),
+}).strict();
+
+const organizationHolderFields = z.object({
+  ...copyrightHolderCommonFields,
+  holder_type: z.literal("organization"),
+}).strict();
+
+export const copyrightHolderFields = z.discriminatedUnion("holder_type", [personHolderFields, organizationHolderFields]).meta({
   id: "CopyrightHolderInput",
-  description: "自然人或企业/单位著作权人信息。",
+  description: "自然人或企业/单位著作权人信息。自然人可以填写出生日期，企业/单位不采集日期字段。",
 });
 
 export const applicationFields = z.object({
   software_full_name: shortText.optional(),
   software_short_name: shortText.optional(),
   version: shortText.optional(),
-  software_category: shortText.optional(),
+  software_category: registrationShortText.optional(),
   work_type: z.enum(["original", "modified"]).optional(),
   development_date: dateText.optional(),
   is_published: z.boolean().optional(),
@@ -52,18 +75,18 @@ export const applicationFields = z.object({
   contact_name: shortText.optional(),
   contact_phone: shortText.optional(),
   contact_email: shortText.optional(),
-  development_hardware: longText.optional(),
-  runtime_hardware: longText.optional(),
-  development_os: longText.optional(),
-  development_tools: longText.optional(),
-  runtime_platform: longText.optional(),
-  runtime_environment: longText.optional(),
-  programming_language: longText.optional(),
+  development_hardware: registrationShortText.optional(),
+  runtime_hardware: registrationShortText.optional(),
+  development_os: registrationShortText.optional(),
+  development_tools: registrationShortText.optional(),
+  runtime_platform: registrationShortText.optional(),
+  runtime_environment: registrationShortText.optional(),
+  programming_language: registrationShortText.optional(),
   source_code_lines: z.number().int().min(0).max(1_000_000_000).optional(),
-  development_purpose: longText.optional(),
-  target_industry: longText.optional(),
-  main_functions: longText.optional(),
-  technical_features: longText.optional(),
+  development_purpose: registrationShortText.optional(),
+  target_industry: registrationShortText.optional(),
+  main_functions: mainFunctionsText.optional(),
+  technical_features: technicalFeaturesText.optional(),
   // These columns remain for old applications and old pages.
   company_name: shortText.optional(),
   credit_code: shortText.optional(),
@@ -86,6 +109,38 @@ export const sourceUploadSchema = z.object({
 }).meta({
   id: "SourceUploadRequest",
   description: "源码 ZIP、TAR.GZ 或 TGZ 压缩包的上传授权请求。",
+});
+
+export const sourceFeedbackFieldSchema = z.enum(SOURCE_FEEDBACK_FIELDS);
+
+export const sourceFeedbackRequestSchema = z.object({
+  applicationId: applicationIdSchema,
+  llmConfigId: llmConfigIdSchema,
+  sourceObjectKey: z.string().trim().min(1).max(500),
+  sourceFileName: z.string().trim().min(1).max(200),
+}).meta({
+  id: "SourceFeedbackRequest",
+  description: "根据用户上传的源码压缩包生成申请信息修正建议。建议需要用户确认后才会写回申请。",
+});
+
+export const sourceFeedbackSuggestionResponseSchema = z.object({
+  field: sourceFeedbackFieldSchema,
+  label: z.string(),
+  currentValue: z.string(),
+  suggestedValue: z.string(),
+  reason: z.string(),
+}).meta({
+  id: "SourceFeedbackSuggestion",
+});
+
+export const sourceFeedbackResponseSchema = z.object({
+  sourceSummary: z.string(),
+  fileCount: z.number().int().min(0),
+  sourceCodeLines: z.number().int().min(0),
+  suggestions: z.array(sourceFeedbackSuggestionResponseSchema),
+}).meta({
+  id: "SourceFeedbackResponse",
+  description: "源码分析结果和待用户确认的申请信息建议。",
 });
 
 export const enrichRequestSchema = z.object({

@@ -139,6 +139,23 @@ Content-Type: application/json
 
 为 ZIP、TAR.GZ 或 TGZ 源码压缩包创建 signed upload 授权。单个源码压缩包上限为 100 MB。上传完成后，客户端将返回的 `path` 作为生成接口的 `sourceObjectKey`。
 
+### `POST /api/source-feedback`
+
+根据已上传的源码压缩包核对申请中的技术信息。请求体为：
+
+```json
+{
+  "applicationId": "00000000-0000-0000-0000-000000000000",
+  "llmConfigId": "00000000-0000-0000-0000-000000000000",
+  "sourceObjectKey": "incoming/user-id/upload-id-source.zip",
+  "sourceFileName": "source.zip"
+}
+```
+
+服务端会确认申请、模型配置和源码对象属于当前用户，安全读取压缩包后返回源码文件数、统计行数以及建议列表。源码对象在本次请求结束时删除，不会自动覆盖申请。建议包含字段、原值、建议值和依据，前端由用户勾选后写回表单并另行调用申请更新接口。
+
+源码反馈只允许涉及软件技术和功能字段，不涉及著作权人、证件、权利、申请人、联系人、联系方式或日期。源码统计行数由服务端计算，不接受模型猜测。
+
 ## AI 补全和材料生成
 
 ### `POST /api/enrich`
@@ -152,13 +169,13 @@ Content-Type: application/json
 }
 ```
 
-服务端读取当前用户的模型配置，补全申请信息后保存结果。
+服务端读取当前用户的模型配置，只补全技术性空白字段并保存结果；已经填写的字段、著作权人、证件、权利说明、申请人和联系人不会由该接口覆盖或猜测。软件的主要功能必须为 500～1300 字符，软件技术特点不超过 100 字符，环境/语言/开发目的/面向领域行业/软件分类不超过 50 字符。
 
 ### `POST /api/generate`
 
 请求体包含 `applicationId`、`llmConfigId`，以及可选的 `tableTemplate`、`skipAnalyze`、`sourceObjectKey` 和 `sourceFileName`。
 
-此接口不是普通 JSON 响应，而是 `text/event-stream`。事件格式为：
+此接口不是普通 JSON 响应，而是 `text/event-stream`。当 `skipAnalyze` 为 `true` 时，启动前会要求主要功能满足 500～1300 字符；事件格式为：
 
 ```text
 data: {"step":"source_code","message":"正在生成源代码文档…","data":{}}

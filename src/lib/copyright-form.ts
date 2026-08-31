@@ -1,3 +1,5 @@
+import { validateCopyrightTextFields } from "./copyright-constraints.ts";
+
 export type HolderType = "person" | "organization";
 export type DevelopmentMethod = "independent" | "cooperative" | "commissioned" | "assigned_task";
 export type WorkType = "original" | "modified";
@@ -15,7 +17,7 @@ export interface CopyrightHolder {
   nationality: string;
   province: string;
   city: string;
-  park?: string;
+  /** 仅自然人使用；数据库旧列 birth_or_established_date 保留兼容。 */
   birth_or_established_date?: string;
   sort_order: number;
 }
@@ -73,7 +75,6 @@ export const EMPTY_COPYRIGHT_HOLDER: CopyrightHolder = {
   nationality: "中国",
   province: "",
   city: "",
-  park: "",
   birth_or_established_date: "",
   sort_order: 0,
 };
@@ -136,24 +137,34 @@ const MD_FIELD_ROWS: Array<{ key: keyof CopyrightFormData; label: string }> = [
   { key: "original_registration_number", label: "原登记号" },
   { key: "modification_description", label: "修改说明" },
   { key: "application_method", label: "申请办理方式" },
-  { key: "development_hardware", label: "开发硬件环境" },
-  { key: "runtime_hardware", label: "运行硬件环境" },
+  { key: "development_hardware", label: "开发的硬件环境" },
+  { key: "runtime_hardware", label: "运行的硬件环境" },
   { key: "development_os", label: "开发操作系统" },
-  { key: "development_tools", label: "开发工具" },
-  { key: "runtime_platform", label: "运行平台" },
-  { key: "runtime_environment", label: "运行环境" },
+  { key: "development_tools", label: "软件开发环境工具" },
+  { key: "runtime_platform", label: "运行平台操作系统" },
+  { key: "runtime_environment", label: "软件运行支撑环境" },
   { key: "programming_language", label: "编程语言" },
-  { key: "source_code_lines", label: "源程序量" },
+  { key: "source_code_lines", label: "源码代码行数" },
   { key: "development_purpose", label: "开发目的" },
   { key: "target_industry", label: "面向领域/行业" },
-  { key: "main_functions", label: "主要功能" },
-  { key: "technical_features", label: "技术特点" },
+  { key: "main_functions", label: "软件的主要功能" },
+  { key: "technical_features", label: "软件技术特点" },
   { key: "company_name", label: "兼容旧字段：公司名称" },
   { key: "credit_code", label: "兼容旧字段：统一社会信用代码" },
 ];
 
 const LABEL_TO_KEY = Object.fromEntries(
-  MD_FIELD_ROWS.map(({ key, label }) => [label, key]),
+  [
+    ...MD_FIELD_ROWS,
+    { key: "development_hardware", label: "开发硬件环境" },
+    { key: "runtime_hardware", label: "运行硬件环境" },
+    { key: "development_tools", label: "开发工具" },
+    { key: "runtime_platform", label: "运行平台" },
+    { key: "runtime_environment", label: "运行环境" },
+    { key: "source_code_lines", label: "源程序量" },
+    { key: "main_functions", label: "主要功能" },
+    { key: "technical_features", label: "技术特点" },
+  ].map(({ key, label }) => [label, key]),
 ) as Record<string, keyof CopyrightFormData>;
 
 const workTypeLabels: Record<WorkType, string> = {
@@ -194,9 +205,10 @@ function holderDetails(holders: CopyrightHolder[]): string {
     .sort((left, right) => left.sort_order - right.sort_order)
     .map((holder) => {
       const type = holder.holder_type === "person" ? "自然人" : "单位";
-      const dateLabel = holder.holder_type === "person" ? "出生日期" : "成立日期";
       const location = [holder.nationality, holder.province, holder.city].filter(Boolean).join("/");
-      const date = holder.birth_or_established_date ? `，${dateLabel}：${holder.birth_or_established_date}` : "";
+      const date = holder.holder_type === "person" && holder.birth_or_established_date
+        ? `，出生日期：${holder.birth_or_established_date}`
+        : "";
       return `${holder.name}（${type}；${holder.category}；${holder.document_type}：${holder.document_number}；${location || "未填写地区"}${date}）`;
     })
     .join("；");
@@ -261,8 +273,9 @@ function normalizeHolder(value: unknown, index: number): CopyrightHolder | null 
     nationality: asString(item.nationality, "中国"),
     province: asString(item.province),
     city: asString(item.city),
-    park: asString(item.park),
-    birth_or_established_date: asString(item.birth_or_established_date ?? item.birthOrEstablishedDate),
+    ...(holderType === "person"
+      ? { birth_or_established_date: asString(item.birth_or_established_date ?? item.birthOrEstablishedDate) }
+      : {}),
     sort_order: Number.isFinite(Number(item.sort_order ?? item.sortOrder)) ? Number(item.sort_order ?? item.sortOrder) : index,
   };
 }
@@ -338,7 +351,19 @@ export function formToUpdatePayload(form: CopyrightFormData) {
   void status;
   void created_at;
   void updated_at;
-  return rest;
+  return {
+    ...rest,
+    copyright_holders: rest.copyright_holders.map((holder) => {
+      if (holder.holder_type === "person") return holder;
+      const { birth_or_established_date, ...organization } = holder;
+      void birth_or_established_date;
+      return organization;
+    }),
+  };
+}
+
+export function validateCopyrightForm(form: CopyrightFormData, requireMainFunctions = false): string[] {
+  return validateCopyrightTextFields(form as unknown as Record<string, unknown>, { requireMainFunctions });
 }
 
 export function parseMarkdownToForm(markdown: string, base: CopyrightFormData): CopyrightFormData {

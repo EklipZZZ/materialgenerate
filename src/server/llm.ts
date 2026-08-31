@@ -1,5 +1,5 @@
-import { getServerEnv } from "./config";
-import { buildProviderRequest, type Provider, type ProviderMessage } from "./models";
+import { getServerEnv } from "./config.ts";
+import { buildProviderRequest, type Provider, type ProviderMessage } from "./models.ts";
 
 export type ChatMessage = ProviderMessage;
 

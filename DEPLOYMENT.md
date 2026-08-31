@@ -76,8 +76,14 @@ LLM_REQUEST_TIMEOUT_MS=120000
 可以在 PowerShell 生成转换服务密钥：
 
 ```powershell
-[Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
+$bytes = [byte[]]::new(32)
+$rng = [Security.Cryptography.RandomNumberGenerator]::Create()
+$rng.GetBytes($bytes)
+$rng.Dispose()
+[Convert]::ToBase64String($bytes)
 ```
+
+同样的方法也可以生成 `LLM_CONFIG_ENCRYPTION_KEY`。两者应使用不同的随机值；加密根密钥上线后必须长期保管，不能随意更换。
 
 `LLM_CONFIG_ENCRYPTION_KEY` 是已有用户 API Key 的解密根密钥，首次上线后必须长期保管，不能随意更换；如需轮换，应先设计密钥迁移。不要把用户的 OpenAI/DeepSeek Key 配置到 Vercel，用户在网页设置中保存自己的 Key。
 

@@ -26,6 +26,7 @@ test("OpenAPI document describes the softreg contract", () => {
   assert.ok(document.components?.securitySchemes?.bearerAuth);
   assert.deepEqual(document.paths["/api/health"]?.get && (document.paths["/api/health"].get as Record<string, unknown>).security, []);
   assert.ok(document.paths["/api/generate"]?.post);
+  assert.ok(document.paths["/api/source-feedback"]?.post);
   assert.ok(document.paths["/api/applications/{id}/materials/upload-url"]?.post);
   assert.ok(document.paths["/api/llm-configs/{id}/test"]?.post);
 

@@ -2242,6 +2242,106 @@
           }
         }
       }
+    },
+    "/api/source-feedback": {
+      "post": {
+        "tags": [
+          "申请"
+        ],
+        "summary": "根据源码生成申请信息修正建议",
+        "description": "源码压缩包由客户端先直传到 Supabase Storage；本接口读取后生成建议并删除临时源码。建议必须由用户确认后再写回申请。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceFeedbackRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "源码反馈已生成",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/SourceFeedbackResponse"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "msg",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或登录凭证无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在或不属于当前用户。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "当前资源状态冲突，例如申请已有运行中的生成任务。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器或上游服务处理失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2263,7 +2363,7 @@
           },
           "software_category": {
             "type": "string",
-            "maxLength": 300
+            "maxLength": 50
           },
           "work_type": {
             "type": "string",
@@ -2357,31 +2457,31 @@
           },
           "development_hardware": {
             "type": "string",
-            "maxLength": 20000
+            "maxLength": 50
           },
           "runtime_hardware": {
             "type": "string",
-            "maxLength": 20000
+            "maxLength": 50
           },
           "development_os": {
             "type": "string",
-            "maxLength": 20000
+            "maxLength": 50
           },
           "development_tools": {
             "type": "string",
-            "maxLength": 20000
+            "maxLength": 50
           },
           "runtime_platform": {
             "type": "string",
-            "maxLength": 20000
+            "maxLength": 50
           },
           "runtime_environment": {
             "type": "string",
-            "maxLength": 20000
+            "maxLength": 50
           },
           "programming_language": {
             "type": "string",
-            "maxLength": 20000
+            "maxLength": 50
           },
           "source_code_lines": {
             "type": "integer",
@@ -2390,19 +2490,19 @@
           },
           "development_purpose": {
             "type": "string",
-            "maxLength": 20000
+            "maxLength": 50
           },
           "target_industry": {
             "type": "string",
-            "maxLength": 20000
+            "maxLength": 50
           },
           "main_functions": {
             "type": "string",
-            "maxLength": 20000
+            "maxLength": 1300
           },
           "technical_features": {
             "type": "string",
-            "maxLength": 20000
+            "maxLength": 100
           },
           "company_name": {
             "type": "string",
@@ -2424,79 +2524,140 @@
         "description": "创建或更新申请时使用的请求体。"
       },
       "CopyrightHolderInput": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 300
+              },
+              "category": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 300
+              },
+              "document_type": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 300
+              },
+              "document_number": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 300
+              },
+              "nationality": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 300
+              },
+              "province": {
+                "type": "string",
+                "maxLength": 300
+              },
+              "city": {
+                "type": "string",
+                "maxLength": 300
+              },
+              "sort_order": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000
+              },
+              "holder_type": {
+                "type": "string",
+                "const": "person"
+              },
+              "birth_or_established_date": {
+                "type": "string",
+                "maxLength": 40
+              }
+            },
+            "required": [
+              "name",
+              "category",
+              "document_type",
+              "document_number",
+              "nationality",
+              "province",
+              "city",
+              "holder_type"
+            ],
+            "additionalProperties": false
           },
-          "holder_type": {
-            "type": "string",
-            "enum": [
-              "person",
-              "organization"
-            ]
-          },
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 300
-          },
-          "category": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 300
-          },
-          "document_type": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 300
-          },
-          "document_number": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 300
-          },
-          "nationality": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 300
-          },
-          "province": {
-            "type": "string",
-            "maxLength": 300
-          },
-          "city": {
-            "type": "string",
-            "maxLength": 300
-          },
-          "park": {
-            "type": "string",
-            "maxLength": 300
-          },
-          "birth_or_established_date": {
-            "type": "string",
-            "maxLength": 40
-          },
-          "sort_order": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 1000
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 300
+              },
+              "category": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 300
+              },
+              "document_type": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 300
+              },
+              "document_number": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 300
+              },
+              "nationality": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 300
+              },
+              "province": {
+                "type": "string",
+                "maxLength": 300
+              },
+              "city": {
+                "type": "string",
+                "maxLength": 300
+              },
+              "sort_order": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000
+              },
+              "holder_type": {
+                "type": "string",
+                "const": "organization"
+              }
+            },
+            "required": [
+              "name",
+              "category",
+              "document_type",
+              "document_number",
+              "nationality",
+              "province",
+              "city",
+              "holder_type"
+            ],
+            "additionalProperties": false
           }
-        },
-        "required": [
-          "holder_type",
-          "name",
-          "category",
-          "document_type",
-          "document_number",
-          "nationality",
-          "province",
-          "city"
         ],
-        "additionalProperties": false,
-        "description": "自然人或企业/单位著作权人信息。"
+        "description": "自然人或企业/单位著作权人信息。自然人可以填写出生日期，企业/单位不采集日期字段。",
+        "type": "object"
       },
       "MaterialUploadRequest": {
         "type": "object",
@@ -2700,6 +2861,38 @@
           "size"
         ],
         "description": "源码 ZIP、TAR.GZ 或 TGZ 压缩包的上传授权请求。"
+      },
+      "SourceFeedbackRequest": {
+        "type": "object",
+        "properties": {
+          "applicationId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "llmConfigId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "sourceObjectKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "sourceFileName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "applicationId",
+          "llmConfigId",
+          "sourceObjectKey",
+          "sourceFileName"
+        ],
+        "description": "根据用户上传的源码压缩包生成申请信息修正建议。建议需要用户确认后才会写回申请。"
       },
       "HealthResponse": {
         "type": "object",
@@ -3294,6 +3487,84 @@
         ],
         "additionalProperties": false,
         "description": "源码直传 Supabase Storage 所需的临时授权。"
+      },
+      "SourceFeedbackResponse": {
+        "type": "object",
+        "properties": {
+          "sourceSummary": {
+            "type": "string"
+          },
+          "fileCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "sourceCodeLines": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "suggestions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceFeedbackSuggestion"
+            }
+          }
+        },
+        "required": [
+          "sourceSummary",
+          "fileCount",
+          "sourceCodeLines",
+          "suggestions"
+        ],
+        "additionalProperties": false,
+        "description": "源码分析结果和待用户确认的申请信息建议。"
+      },
+      "SourceFeedbackSuggestion": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "enum": [
+              "software_full_name",
+              "software_short_name",
+              "version",
+              "software_category",
+              "development_hardware",
+              "runtime_hardware",
+              "development_os",
+              "development_tools",
+              "runtime_platform",
+              "runtime_environment",
+              "programming_language",
+              "source_code_lines",
+              "development_purpose",
+              "target_industry",
+              "main_functions",
+              "technical_features"
+            ]
+          },
+          "label": {
+            "type": "string"
+          },
+          "currentValue": {
+            "type": "string"
+          },
+          "suggestedValue": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "label",
+          "currentValue",
+          "suggestedValue",
+          "reason"
+        ],
+        "additionalProperties": false
       }
     },
     "securitySchemes": {

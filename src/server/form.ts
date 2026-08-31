@@ -1,3 +1,5 @@
+import { characterCount, validateCopyrightTextFields } from "../lib/copyright-constraints.ts";
+
 export const formFields = [
   "software_full_name",
   "software_short_name",
@@ -37,6 +39,29 @@ export const formFields = [
   "credit_code",
 ] as const;
 
+/** 只把技术性申请字段交给模型；身份、权利、申请人和联系方式不参与自动补全。 */
+export const aiEnrichmentFields = [
+  "software_short_name",
+  "software_category",
+  "development_hardware",
+  "runtime_hardware",
+  "development_os",
+  "development_tools",
+  "runtime_platform",
+  "runtime_environment",
+  "programming_language",
+  "development_purpose",
+  "target_industry",
+  "main_functions",
+  "technical_features",
+] as const;
+
+const aiContextFields = [
+  "software_full_name",
+  "version",
+  ...aiEnrichmentFields,
+] as const;
+
 const labels: Record<string, string> = {
   software_full_name: "软件全称",
   software_short_name: "软件简称",
@@ -60,18 +85,18 @@ const labels: Record<string, string> = {
   contact_name: "联系人",
   contact_phone: "联系电话",
   contact_email: "联系邮箱",
-  development_hardware: "开发硬件环境",
-  runtime_hardware: "运行硬件环境",
+  development_hardware: "开发的硬件环境",
+  runtime_hardware: "运行的硬件环境",
   development_os: "开发操作系统",
-  development_tools: "开发工具",
-  runtime_platform: "运行平台",
-  runtime_environment: "运行环境",
+  development_tools: "软件开发环境工具",
+  runtime_platform: "运行平台操作系统",
+  runtime_environment: "软件运行支撑环境",
   programming_language: "编程语言",
-  source_code_lines: "源程序量",
+  source_code_lines: "源码代码行数",
   development_purpose: "开发目的",
   target_industry: "面向领域/行业",
-  main_functions: "主要功能",
-  technical_features: "技术特点",
+  main_functions: "软件的主要功能",
+  technical_features: "软件技术特点",
   company_name: "兼容旧字段：公司名称",
   credit_code: "兼容旧字段：统一社会信用代码",
 };
@@ -116,9 +141,10 @@ function holderDetails(row: Record<string, unknown>): string {
     .sort((left, right) => Number(left.sort_order || 0) - Number(right.sort_order || 0))
     .map((holder) => {
       const type = holder.holder_type === "person" ? "自然人" : "单位";
-      const dateLabel = holder.holder_type === "person" ? "出生日期" : "成立日期";
       const location = [holder.nationality, holder.province, holder.city].filter(Boolean).join("/");
-      const date = holder.birth_or_established_date ? `，${dateLabel}：${String(holder.birth_or_established_date)}` : "";
+      const date = holder.holder_type === "person" && holder.birth_or_established_date
+        ? `，出生日期：${String(holder.birth_or_established_date)}`
+        : "";
       return `${String(holder.name || "")}（${type}；${String(holder.category || "")}；${String(holder.document_type || "")}：${String(holder.document_number || "")}；${location || "未填写地区"}${date}）`;
     })
     .filter((value) => !value.startsWith("（"))
@@ -157,9 +183,37 @@ export function formToMarkdown(row: Record<string, unknown>): string {
   return lines.join("\n");
 }
 
+export function formToAiMarkdown(row: Record<string, unknown>): string {
+  const effective = row.enriched_data && typeof row.enriched_data === "object"
+    ? { ...row, ...(row.enriched_data as Record<string, unknown>) }
+    : row;
+  const lines = [
+    "### 软件著作权技术信息（仅供 AI 补全）",
+    "",
+    "| 字段名称 | 填写内容 |",
+    "| :--- | :--- |",
+  ];
+  for (const key of aiContextFields) {
+    const rawValue = effective[key];
+    const value = displayValue(key, rawValue).replace(/\|/g, "\\|");
+    lines.push("| **" + labels[key] + "** | " + value + " |");
+  }
+  return lines.join("\n");
+}
+
 export function parseEnrichedMarkdown(markdown: string, base: Record<string, unknown>) {
   const result = { ...base };
-  const labelToKey = Object.fromEntries(Object.entries(labels).map(([key, label]) => [label, key]));
+  const labelToKey = Object.fromEntries([
+    ...Object.entries(labels),
+    ["开发硬件环境", "development_hardware"],
+    ["运行硬件环境", "runtime_hardware"],
+    ["开发工具", "development_tools"],
+    ["运行平台", "runtime_platform"],
+    ["运行环境", "runtime_environment"],
+    ["源程序量", "source_code_lines"],
+    ["主要功能", "main_functions"],
+    ["技术特点", "technical_features"],
+  ].map(([key, label]) => [label, key]));
   const rowRegex = /\|\s*\*\*(.+?)\*\*\s*\|\s*(.*?)\s*\|/g;
   let match: RegExpExecArray | null;
   while ((match = rowRegex.exec(markdown)) !== null) {
@@ -172,6 +226,25 @@ export function parseEnrichedMarkdown(markdown: string, base: Record<string, unk
       const entry = Object.entries(displayLabels).find(([, value]) => value === label);
       if (entry) result[key] = entry[0];
     } else result[key] = match[2].trim();
+  }
+  return result;
+}
+
+function isUsableAiValue(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const normalized = value.trim();
+  return Boolean(normalized) && !["未填写", "未提供", "暂无", "未知", "无"].includes(normalized);
+}
+
+export function mergeEnrichment(base: Record<string, unknown>, candidate: Record<string, unknown>) {
+  const result = { ...base };
+  for (const field of aiEnrichmentFields) {
+    const current = base[field];
+    const proposed = candidate[field];
+    if (isUsableAiValue(current) || !isUsableAiValue(proposed)) continue;
+    if (field === "software_short_name" && characterCount(proposed.trim()) > 300) continue;
+    if (validateCopyrightTextFields({ [field]: proposed }).length > 0) continue;
+    result[field] = proposed.trim();
   }
   return result;
 }

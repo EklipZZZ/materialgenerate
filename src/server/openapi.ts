@@ -16,6 +16,8 @@ import {
   materialKindSchema,
   materialUploadSchema,
   sourceUploadSchema,
+  sourceFeedbackRequestSchema,
+  sourceFeedbackResponseSchema,
   llmTestRequestSchema,
 } from "./api-contracts.ts";
 
@@ -456,6 +458,15 @@ export function buildOpenApiDocument() {
           description: "获得授权后，客户端使用返回的 path 和 token 直接上传到 Supabase Storage。",
           requestBody: jsonRequest(sourceUploadSchema),
           responses: responses(sourceUploadAuthorizationSchema, "源码上传授权已创建"),
+        },
+      },
+      "/api/source-feedback": {
+        post: {
+          tags: ["申请"],
+          summary: "根据源码生成申请信息修正建议",
+          description: "源码压缩包由客户端先直传到 Supabase Storage；本接口读取后生成建议并删除临时源码。建议必须由用户确认后再写回申请。",
+          requestBody: jsonRequest(sourceFeedbackRequestSchema),
+          responses: responses(sourceFeedbackResponseSchema, "源码反馈已生成"),
         },
       },
     },

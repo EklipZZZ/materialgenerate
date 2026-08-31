@@ -48,10 +48,13 @@ export interface SplitApplicationPayload {
 }
 
 function normalizeHolders(holders: Array<z.infer<typeof copyrightHolderFields>>) {
-  return holders.map((holder, index) => ({
-    ...holder,
-    sort_order: index,
-  }));
+  return holders.map((holder, index) => {
+    const normalized = { ...holder, sort_order: index };
+    if (normalized.holder_type === "organization" && "birth_or_established_date" in normalized) {
+      delete normalized.birth_or_established_date;
+    }
+    return normalized;
+  });
 }
 
 export function splitApplicationPayload(value: unknown) {

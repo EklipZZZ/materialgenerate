@@ -6,6 +6,7 @@ import { CopyrightFormEditor } from "@/components/copyright-form-editor";
 import {
   EMPTY_COPYRIGHT_FORM,
   type CopyrightFormData,
+  validateCopyrightForm,
 } from "@/lib/copyright-form";
 import { createApplication, type ApplicationRecord } from "@/lib/softreg-api";
 
@@ -22,6 +23,11 @@ export function ApplicationForm({ onCreated }: Props) {
   async function submit() {
     if (!form.software_full_name.trim()) {
       setError("请先填写软件全称");
+      return;
+    }
+    const validationErrors = validateCopyrightForm(form);
+    if (validationErrors.length) {
+      setError(validationErrors[0]);
       return;
     }
 

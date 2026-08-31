@@ -130,7 +130,7 @@ export async function generateMaterials(input: GenerationInput): Promise<Generat
   if (sourceInfo) {
     emit({ step: "source_code", message: "正在处理上传的源代码…" });
     sourceMarkdown = sourceInfo.content;
-    emit({ step: "source_code", message: `源代码处理完成，共${sourceMarkdown.split("\n").length}行` });
+    emit({ step: "source_code", message: `源代码处理完成，共${sourceInfo.lineCount}行` });
   } else {
     emit({ step: "source_code", message: `正在生成源代码文档（模块化生成，共${sourceModules.length}个模块）…` });
     const results = await runBounded(sourceModules, 2, async (module, index) => {

@@ -3,6 +3,7 @@ import test from "node:test";
 import { gzipSync, strToU8, zipSync } from "fflate";
 import { pack } from "tar-stream";
 import { extractSourceCode } from "../src/server/source-extractor.ts";
+import { generateSourceFeedback } from "../src/server/source-feedback.ts";
 
 const progress = () => undefined;
 
@@ -21,9 +22,11 @@ test("extracts ZIP and TAR.GZ source files without shell commands", async () => 
   const zip = Buffer.from(zipSync({ "src/main.py": strToU8("print(1)\n") }));
   const zipResult = await extractSourceCode(zip, "source.zip", progress);
   assert.match(zipResult.content, /print\(1\)/u);
+  assert.equal(zipResult.lineCount, 2);
 
   const tarResult = await extractSourceCode(await makeTarGz(), "source.tar.gz", progress);
   assert.match(tarResult.content, /print\(1\)/u);
+  assert.equal(tarResult.lineCount, 2);
 });
 
 test("rejects archive path traversal and TAR symbolic links", async () => {
@@ -47,4 +50,19 @@ test("does not expand ZIP entries larger than one source file limit", async () =
   const result = await extractSourceCode(archive, "large.zip", progress);
   assert.equal(result.fileCount, 0);
   assert.equal(result.content, "");
+});
+
+test("source feedback does not call the model when no source files are readable", async () => {
+  const archive = Buffer.from(zipSync({ "assets/logo.png": strToU8("not source code") }));
+  const result = await generateSourceFeedback({
+    application: { contact_name: "private contact" },
+    sourceBuffer: archive,
+    sourceFileName: "assets.zip",
+    provider: "deepseek",
+    model: "deepseek-v4-flash",
+    apiKey: "not-used",
+  });
+  assert.equal(result.fileCount, 0);
+  assert.equal(result.sourceCodeLines, 0);
+  assert.deepEqual(result.suggestions, []);
 });

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { getOwnedApplication } from "@/server/applications";
+import { effectiveApplication, getOwnedApplication } from "@/server/applications";
 import { getOwnedLlmSecret } from "@/server/llm-configs";
 import { createGenerationJob, recordJobEvent, updateGenerationJob } from "@/server/generation-jobs";
 import { assertObjectSize, deleteObjects, downloadBuffer, signedDownloadUrl, uploadBuffer } from "@/server/storage";
@@ -10,6 +10,7 @@ import { errorResponse, fail, isAbortError, requireUser } from "@/server/http";
 import { getSupabaseAdmin } from "@/server/config";
 import { recordGeneratedMaterials } from "@/server/materials";
 import { generateRequestSchema } from "@/server/api-contracts";
+import { validateCopyrightTextFields } from "@/lib/copyright-constraints";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -61,6 +62,14 @@ export async function POST(request: NextRequest) {
     if (parsed.sourceObjectKey && !parsed.sourceObjectKey.startsWith(`incoming/${user.id}/`)) {
       return fail(400, "源码文件无效");
     }
+    if (parsed.skipAnalyze) {
+      const effective = effectiveApplication(application).effective_form as Record<string, unknown>;
+      const validationErrors = validateCopyrightTextFields(effective, { requireMainFunctions: true });
+      if (validationErrors.length) {
+        if (parsed.sourceObjectKey) await deleteObjects([parsed.sourceObjectKey]).catch(() => undefined);
+        return fail(400, `生成前请修正：${validationErrors[0]}`);
+      }
+    }
   } catch (error) {
     return errorResponse(error, "生成请求无效");
   }
@@ -74,6 +83,7 @@ export async function POST(request: NextRequest) {
       model: llmConfig.model,
     });
   } catch (error) {
+    if (parsed.sourceObjectKey) await deleteObjects([parsed.sourceObjectKey]).catch(() => undefined);
     return errorResponse(error, "创建生成任务失败");
   }
   const jobId = job.id;

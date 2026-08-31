@@ -16,6 +16,7 @@ import {
 import { AppShell, PageHeader, Panel, StatusBadge } from "@/components/app-shell";
 import { useAuth } from "@/components/auth-provider";
 import { CopyrightFormEditor } from "@/components/copyright-form-editor";
+import { SourceFeedbackPanel } from "@/components/source-feedback-panel";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -27,7 +28,7 @@ import { apiEndpoint } from "@/lib/api-base";
 import { getApplicationProgress, getApplicationStatus } from "@/lib/application-progress";
 import { type ByokConfig } from "@/lib/byok";
 import { authorizedFetch } from "@/lib/auth";
-import { recordToFormData, type CopyrightFormData } from "@/lib/copyright-form";
+import { recordToFormData, type CopyrightFormData, validateCopyrightForm } from "@/lib/copyright-form";
 import { loadPersistedByok } from "@/lib/llm-config-client";
 import {
   deleteApplication,
@@ -79,6 +80,11 @@ export default function ApplicationEditPage() {
       setError("请先填写软件全称");
       return;
     }
+    const validationErrors = validateCopyrightForm(form);
+    if (validationErrors.length) {
+      setError(validationErrors[0]);
+      return;
+    }
     setSaving(true);
     setError(null);
     setMessage(null);
@@ -114,7 +120,7 @@ export default function ApplicationEditPage() {
       const updated = recordToFormData(body.data) as ApplicationRecord;
       setApplication(updated);
       setForm(updated);
-      setMessage("AI 补全完成，请检查内容并保存需要保留的修改");
+      setMessage(body.msg || "AI 补全完成，请检查内容并保存需要保留的修改");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "AI 补全失败");
     } finally {
@@ -184,6 +190,16 @@ export default function ApplicationEditPage() {
                 form={form}
                 onChange={setForm}
                 disabled={busy}
+              />
+              <SourceFeedbackPanel
+                applicationId={id}
+                llmConfigId={byok?.id}
+                disabled={busy}
+                onApply={(patch) => {
+                  setForm((current) => current ? { ...current, ...patch } : current);
+                  setError(null);
+                  setMessage("源码反馈已应用到表单草稿，请检查后保存");
+                }}
               />
               <div className="form-actions form-actions--sticky">
                 <Button type="button" variant="outline" onClick={() => void enrich()} disabled={busy}>

@@ -8,7 +8,7 @@ import { CopyrightFormEditor } from "@/components/copyright-form-editor";
 import { apiEndpoint } from "@/lib/api-base";
 import { authorizedFetch } from "@/lib/auth";
 import type { ByokConfig } from "@/lib/byok";
-import { formToMarkdown, recordToFormData, type CopyrightFormData } from "@/lib/copyright-form";
+import { formToMarkdown, recordToFormData, type CopyrightFormData, validateCopyrightForm } from "@/lib/copyright-form";
 import { deleteApplication, listApplications, updateApplication, type ApplicationRecord } from "@/lib/softreg-api";
 
 export interface QueryPanelGeneratePayload {
@@ -59,6 +59,11 @@ export function CopyrightQueryPanel({ disabled, refreshToken, byok, onReadyToGen
 
   async function save() {
     if (!selectedForm || !selected?.id) return;
+    const validationErrors = validateCopyrightForm(selectedForm);
+    if (validationErrors.length) {
+      setError(validationErrors[0]);
+      return;
+    }
     setWorking(true);
     setError(null);
     try {
@@ -92,7 +97,7 @@ export function CopyrightQueryPanel({ disabled, refreshToken, byok, onReadyToGen
       const updated = recordToFormData(body.data) as ApplicationRecord;
       setSelected(updated);
       setApplications((current) => current.map((item) => item.id === updated.id ? updated : item));
-      setMessage("AI 补全完成，请检查内容");
+      setMessage(body.msg || "AI 补全完成，请检查内容");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "AI 补全失败");
     } finally {
