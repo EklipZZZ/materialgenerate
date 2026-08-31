@@ -230,11 +230,13 @@ export async function generateMaterials(input: GenerationInput): Promise<Generat
     convertMarkdown("code", sourceMarkdown, softwareName, version, input.requestUrl, signal),
     convertMarkdown("manual", manualMarkdown, softwareName, version, input.requestUrl, signal),
   ]);
-  const [sourcePdfResult, manualPdfResult, summaryPdfResult] = await Promise.all([
-    renderMarkdownPdf(sourceMarkdown, softwareName, version, "code"),
-    renderMarkdownPdf(manualMarkdown, softwareName, version, "manual"),
-    renderMarkdownPdf(collectionMarkdown, softwareName, version, "summary"),
-  ]);
+  emit({ step: "convert", message: "DOCX 文档生成完成，正在生成源代码 PDF…" });
+  const sourcePdfResult = await renderMarkdownPdf(sourceMarkdown, softwareName, version, "code", signal);
+  emit({ step: "convert", message: `源代码 PDF 生成完成，共${sourcePdfResult.pageCount}页` });
+  const manualPdfResult = await renderMarkdownPdf(manualMarkdown, softwareName, version, "manual", signal);
+  emit({ step: "convert", message: `用户手册 PDF 生成完成，共${manualPdfResult.pageCount}页` });
+  const summaryPdfResult = await renderMarkdownPdf(collectionMarkdown, softwareName, version, "summary", signal);
+  emit({ step: "convert", message: `申请信息摘要 PDF 生成完成，共${summaryPdfResult.pageCount}页` });
   const pdfWarnings = [
     ...preflightPdf(sourcePdfResult, softwareName, version, sourceMarkdown, "code"),
     ...preflightPdf(manualPdfResult, softwareName, version, manualMarkdown, "manual"),

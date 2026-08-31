@@ -6,6 +6,15 @@ const A4_WIDTH = 595.28;
 const MARGIN = 56;
 const HEADER_Y = 28;
 const FOOTER_Y = 806;
+const CODE_CHUNK_CHARS = 120;
+const BODY_CHUNK_CHARS = 240;
+
+type PdfRowKind = "body" | "heading" | "code" | "blank";
+
+interface PdfRow {
+  text: string;
+  kind: PdfRowKind;
+}
 
 function chineseFontPath(): string {
   const fontPath = path.join(
@@ -32,14 +41,40 @@ function cleanInlineMarkdown(value: string): string {
     .trim();
 }
 
-function markdownRows(markdown: string, forceCode = false): Array<{ text: string; kind: "body" | "heading" | "code" | "blank" }> {
-  if (forceCode) {
-    return markdown.replace(/\r\n/g, "\n").split("\n").map((line) => ({
-      text: line || " ",
-      kind: "code" as const,
-    }));
+function splitForPdf(value: string, maxChars: number): string[] {
+  if (value.length <= maxChars) return [value];
+  const chunks: string[] = [];
+  let start = 0;
+  while (start < value.length) {
+    let end = Math.min(start + maxChars, value.length);
+    // Avoid splitting a UTF-16 surrogate pair when a long line contains an
+    // emoji or another supplementary Unicode character.
+    if (end < value.length) {
+      const codeUnit = value.charCodeAt(end);
+      if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) end -= 1;
+    }
+    chunks.push(value.slice(start, end));
+    start = end;
   }
-  const rows: Array<{ text: string; kind: "body" | "heading" | "code" | "blank" }> = [];
+  return chunks.length ? chunks : [" "];
+}
+
+function addTextRows(rows: PdfRow[], text: string, kind: Exclude<PdfRowKind, "blank">): void {
+  const maxChars = kind === "code" ? CODE_CHUNK_CHARS : BODY_CHUNK_CHARS;
+  for (const chunk of splitForPdf(text, maxChars)) {
+    rows.push({ text: chunk || " ", kind });
+  }
+}
+
+function markdownRows(markdown: string, forceCode = false): PdfRow[] {
+  if (forceCode) {
+    const rows: PdfRow[] = [];
+    for (const line of markdown.replace(/\r\n/g, "\n").split("\n")) {
+      addTextRows(rows, line || " ", "code");
+    }
+    return rows;
+  }
+  const rows: PdfRow[] = [];
   let inCode = false;
   for (const originalLine of markdown.replace(/\r\n/g, "\n").split("\n")) {
     const line = originalLine.replace(/\s+$/, "");
@@ -57,20 +92,17 @@ function markdownRows(markdown: string, forceCode = false): Array<{ text: string
     }
     const heading = line.match(/^\s{0,3}#{1,6}\s+(.+)$/);
     if (heading) {
-      rows.push({ text: cleanInlineMarkdown(heading[1]), kind: "heading" });
+      addTextRows(rows, cleanInlineMarkdown(heading[1]), "heading");
       continue;
     }
     if (/^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?\s*$/.test(line)) continue;
     if (line.trim().startsWith("|")) {
       const cells = line.split("|").slice(1, -1).map((cell) => cleanInlineMarkdown(cell));
-      rows.push({ text: cells.join("    "), kind: "body" });
+      addTextRows(rows, cells.join("    "), "body");
       continue;
     }
     const listItem = line.match(/^\s*(?:[-*+]\s+|\d+[.)]\s+)(.*)$/);
-    rows.push({
-      text: listItem ? "• " + cleanInlineMarkdown(listItem[1]) : cleanInlineMarkdown(line),
-      kind: "body",
-    });
+    addTextRows(rows, listItem ? "• " + cleanInlineMarkdown(listItem[1]) : cleanInlineMarkdown(line), "body");
   }
   return rows;
 }
@@ -92,12 +124,26 @@ export interface PdfRenderResult {
   textLength: number;
 }
 
-export function renderMarkdownPdf(
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    const error = new Error("Operation aborted");
+    error.name = "AbortError";
+    throw error;
+  }
+}
+
+function yieldToEventLoop(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
+export async function renderMarkdownPdf(
   markdown: string,
   softwareName: string,
   version: string,
   kind: "code" | "manual" | "summary",
+  signal?: AbortSignal,
 ): Promise<PdfRenderResult> {
+  throwIfAborted(signal);
   const fontPath = chineseFontPath();
   if (!markdown.trim()) throw new Error("PDF 内容为空");
   const document = new PDFDocument({
@@ -130,7 +176,11 @@ export function renderMarkdownPdf(
 
   const rows = markdownRows(markdown, kind === "code");
   const sourceLineCount = markdown.replace(/\r\n/g, "\n").split("\n").length;
-  for (const row of rows) {
+  for (const [index, row] of rows.entries()) {
+    if (index % 100 === 0) {
+      throwIfAborted(signal);
+      await yieldToEventLoop();
+    }
     if (document.y > 770) document.addPage();
     if (row.kind === "blank") {
       document.moveDown(0.35);
@@ -156,6 +206,7 @@ export function renderMarkdownPdf(
     });
     document.moveDown(0.2);
   }
+  throwIfAborted(signal);
 
   return new Promise((resolve, reject) => {
     document.on("end", () => {

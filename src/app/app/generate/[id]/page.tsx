@@ -250,9 +250,25 @@ export default function GenerationDetailPage() {
       setResult(finalResult);
       if (finalResult?.jobId) {
         setLatestJob({ id: finalResult.jobId, status: "completed", current_step: "complete", progress: 100 });
+        setMaterialRefresh((current) => current + 1);
+      } else {
+        const job = await fetchLatestGenerationJob(id);
+        if (job) {
+          setLatestJob(job);
+          setCurrentStep(job.current_step);
+          setMessage(job.error_message || `生成任务状态：${job.status}`);
+          if (job.status === "failed" || job.status === "cancelled") {
+            setError(job.error_message || "生成任务未完成");
+          } else if (job.status === "completed") {
+            setError("生成任务已完成，但文件结果未返回，请刷新页面查看材料清单。");
+          } else {
+            setError("生成连接已中断，任务仍在服务器处理；请等待任务状态更新。");
+          }
+        } else {
+          setError("生成连接已中断，任务状态暂不可用，请刷新页面查看。");
+        }
+        setMaterialRefresh((current) => current + 1);
       }
-      setMaterialRefresh((current) => current + 1);
-      if (!finalResult) setError("生成服务未返回文件结果");
     } catch (cause) {
       if (cause instanceof Error && cause.name === "AbortError") setError("已取消生成");
       else setError(cause instanceof Error ? cause.message : "生成失败");
@@ -332,7 +348,7 @@ export default function GenerationDetailPage() {
               )}
 
               <div className="generation-actions">
-                <Button type="button" onClick={() => void generate()} disabled={generating || !byok?.id}>
+                <Button type="button" onClick={() => void generate()} disabled={generating || !byok?.id || latestStatus === "queued" || latestStatus === "running"}>
                   {generating ? <LoaderCircle className="app-spin" size={16} /> : <Play size={16} />}
                   {generating ? "生成中…" : "开始生成"}
                 </Button>

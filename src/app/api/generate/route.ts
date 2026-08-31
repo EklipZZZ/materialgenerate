@@ -12,10 +12,13 @@ import { recordGeneratedMaterials } from "@/server/materials";
 import { generateRequestSchema } from "@/server/api-contracts";
 import { validateCopyrightTextFields } from "@/lib/copyright-constraints";
 import { getLlmFailureInfo } from "@/server/llm";
+import { DocumentConversionError } from "@/server/converter";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
+export const maxDuration = 600;
+
+const GENERATION_SOFT_TIMEOUT_MS = 540_000;
 
 const bodySchema = generateRequestSchema;
 
@@ -119,6 +122,11 @@ export async function POST(request: NextRequest) {
   }
   const jobId = job.id;
   const abortController = new AbortController();
+  let deadlineExceeded = false;
+  const generationDeadline = setTimeout(() => {
+    deadlineExceeded = true;
+    abortController.abort();
+  }, GENERATION_SOFT_TIMEOUT_MS);
   const abort = () => abortController.abort();
   request.signal.addEventListener("abort", abort, { once: true });
   let controllerClosed = false;
@@ -286,16 +294,33 @@ export async function POST(request: NextRequest) {
           });
           terminal = true;
         } catch (error) {
-          const cancelled = isAbortError(error) || abortController.signal.aborted;
+          const cancelled = !deadlineExceeded && (isAbortError(error) || abortController.signal.aborted);
           const status = cancelled ? "cancelled" : "failed";
           const failure = getLlmFailureInfo(error);
           const operation = operationLabel(failure?.operation);
+          const documentFailure = error instanceof DocumentConversionError ? error.message : null;
           const message = cancelled
             ? "生成任务已取消"
-            : failure
-              ? `生成失败${operation ? `（${operation}）` : ""}：${failure.userMessage}`
-              : `生成在${stageLabel(stage)}阶段失败，请稍后重试`;
-          const failureMetadata = failure
+            : deadlineExceeded
+              ? "生成超过平台运行时限，任务已自动结束，请稍后重试"
+              : documentFailure
+                ? `生成失败（文档转换）：${documentFailure}`
+                : failure
+                  ? `生成失败${operation ? `（${operation}）` : ""}：${failure.userMessage}`
+                  : `生成在${stageLabel(stage)}阶段失败，请稍后重试`;
+          const failureMetadata = deadlineExceeded
+            ? {
+              failure_kind: "generation_timeout",
+              operation: null,
+              retryable: true,
+            }
+            : documentFailure
+              ? {
+                failure_kind: "document_conversion",
+                operation: "convert",
+                retryable: true,
+              }
+              : failure
             ? {
               failure_kind: failure.kind,
               provider: failure.provider,
@@ -311,6 +336,8 @@ export async function POST(request: NextRequest) {
               operation: null,
               retryable: false,
             };
+          const failureKind = failure?.kind || (deadlineExceeded ? "generation_timeout" : documentFailure ? "document_conversion" : undefined);
+          const retryable = failure?.retryable ?? (deadlineExceeded || Boolean(documentFailure));
           terminal = true;
           console.error("generation pipeline failed", { stage, ...failureMetadata });
           await Promise.all(pendingPersistence);
@@ -337,9 +364,9 @@ export async function POST(request: NextRequest) {
             controller.enqueue(sseEvent("error", message, {
               jobId,
               stage,
-              operation: failure?.operation,
-              errorKind: failure?.kind,
-              retryable: failure?.retryable,
+              operation: failure?.operation || (documentFailure ? "convert" : undefined),
+              errorKind: failureKind,
+              retryable,
             }));
           }
           if (uploadedKeys.length) await deleteObjects(uploadedKeys).catch(() => undefined);
@@ -355,6 +382,7 @@ export async function POST(request: NextRequest) {
             controllerClosed = true;
             controller.close();
           }
+          clearTimeout(generationDeadline);
         }
       })();
     },

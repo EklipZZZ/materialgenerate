@@ -19,3 +19,14 @@ test("native PDF renderer embeds readable Chinese content and paginates", async 
   assert.ok(result.buffer.length > 1_000);
   assert.deepEqual(preflightPdf(result, "材料生成系统", "V1.0", markdown, "code"), []);
 });
+
+test("native PDF renderer handles an unusually long source line", async () => {
+  const markdown = [
+    "x".repeat(100_000),
+    ...Array.from({ length: 100 }, (_, index) => `const line${index} = ${index};`),
+  ].join("\n");
+  const result = await renderMarkdownPdf(markdown, "长行测试", "V1.0", "code");
+  assert.equal(result.sourceLineCount, 101);
+  assert.ok(result.pageCount > 1);
+  assert.ok(result.buffer.includes(Buffer.from("%%EOF")));
+});
