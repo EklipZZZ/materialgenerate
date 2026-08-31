@@ -189,7 +189,7 @@ data: {"step":"source_code","message":"正在生成源代码文档…","data":{}
 
 ```
 
-完成事件的 `step` 为 `complete`，其中包含任务 ID、记录 ID、DOCX/PDF 的临时下载地址、申请摘要和 PDF 预检提醒。失败事件的 `step` 为 `error`，包含任务 ID 和失败阶段。
+完成事件的 `step` 为 `complete`，其中包含任务 ID、记录 ID、DOCX/PDF 的临时下载地址、申请摘要和 PDF 预检提醒。失败事件的 `step` 为 `error`，包含任务 ID、失败阶段、失败类别和是否建议重试。模型错误只返回脱敏后的类别、HTTP 状态和章节信息，不返回 API Key、完整提示词或上游错误正文。
 
 任务状态也会写入 `generation_jobs` 和 `job_events`，因此页面可以在 SSE 中断后查询最近任务。
 

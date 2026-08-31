@@ -7,6 +7,8 @@ export const providerModels = {
 
 export type Provider = keyof typeof providerModels;
 
+export type ThinkingMode = "enabled" | "disabled";
+
 export type ProviderMessage = {
   role: "system" | "user" | "assistant";
   content: string;
@@ -20,6 +22,7 @@ export interface ProviderRequestInput {
   temperature?: number;
   topP?: number;
   maxTokens?: number;
+  thinking?: ThinkingMode;
 }
 
 const providerEndpoints: Record<Provider, string> = {
@@ -86,6 +89,7 @@ export function buildProviderRequest(input: ProviderRequestInput) {
       temperature: input.temperature,
       top_p: input.topP,
       max_tokens: input.maxTokens,
+      ...(input.thinking ? { thinking: { type: input.thinking } } : {}),
     };
   return { url: providerEndpoints[input.provider], body };
 }

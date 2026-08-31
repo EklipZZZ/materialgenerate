@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getOwnedLlmSecret } from "@/server/llm-configs";
-import { testLlm } from "@/server/llm";
+import { getLlmFailureInfo, testLlm } from "@/server/llm";
 import { errorResponse, fail, ok, requireUser } from "@/server/http";
 import { llmConfigIdSchema } from "@/server/api-contracts";
 
@@ -22,6 +22,8 @@ export async function POST(request: NextRequest, context: Context) {
     await testLlm(secret);
     return ok(null, "模型连接正常");
   } catch (error) {
+    const failure = getLlmFailureInfo(error);
+    if (failure) return fail(502, failure.userMessage);
     return errorResponse(error, "模型连接测试失败，请检查 API Key 和模型配置");
   }
 }

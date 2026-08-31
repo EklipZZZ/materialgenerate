@@ -11,6 +11,7 @@ import { getSupabaseAdmin } from "@/server/config";
 import { recordGeneratedMaterials } from "@/server/materials";
 import { generateRequestSchema } from "@/server/api-contracts";
 import { validateCopyrightTextFields } from "@/lib/copyright-constraints";
+import { getLlmFailureInfo } from "@/server/llm";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,8 +38,38 @@ function progressForStep(step: string): number {
     manual: 60,
     convert: 82,
     upload: 94,
+    "source-download": 5,
+    "storage-upload": 94,
     complete: 100,
   }[step] ?? 10;
+}
+
+function stageLabel(stage: string): string {
+  return {
+    queued: "排队",
+    init: "初始化",
+    analyze: "采集表分析",
+    source_code: "源代码处理",
+    manual: "用户手册生成",
+    convert: "文档转换",
+    upload: "结果保存",
+    "source-download": "源码读取",
+    "storage-upload": "文件上传",
+  }[stage] || "生成";
+}
+
+function operationLabel(operation?: string): string | undefined {
+  if (!operation) return undefined;
+  const [group, name] = operation.split("/");
+  const groupLabel = group === "manual" ? "用户手册" : group === "source-code" ? "源代码" : group === "analyze" ? "采集表" : group;
+  const nameLabels: Record<string, string> = {
+    overview: "软件概况",
+    functions: "软件功能",
+    environment: "运行环境与安装",
+    operations: "操作说明",
+    tech_test: "技术特点与测试",
+  };
+  return name ? `${groupLabel}·${nameLabels[name] || name}` : groupLabel;
 }
 
 function sseEvent(step: string, message: string, data?: unknown): Uint8Array {
@@ -97,7 +128,9 @@ export async function POST(request: NextRequest) {
       let lastPersistedAt = 0;
       let lastPersistedSignature = "";
       const pendingPersistence: Promise<void>[] = [];
+      let terminal = false;
       const emit = (step: string, message: string, data?: unknown) => {
+        if (terminal) return;
         if (!controllerClosed && !abortController.signal.aborted) {
           controller.enqueue(sseEvent(step, message, data));
         }
@@ -155,7 +188,10 @@ export async function POST(request: NextRequest) {
             sourceFileName: parsed.sourceFileName || (sourceKey ? sourceNameFromKey(sourceKey) : undefined),
             requestUrl: request.url,
             signal: abortController.signal,
-            emit: (event) => emit(event.step, event.message, event.data),
+            emit: (event) => {
+              if (event.step !== "complete") stage = event.step;
+              emit(event.step, event.message, event.data);
+            },
           });
 
           emit("upload", "正在上传 DOCX、PDF 和摘要材料…");
@@ -248,11 +284,35 @@ export async function POST(request: NextRequest) {
             recordId: createdGenerationRecordId,
             pdfWarnings: generated.pdfWarnings,
           });
+          terminal = true;
         } catch (error) {
           const cancelled = isAbortError(error) || abortController.signal.aborted;
           const status = cancelled ? "cancelled" : "failed";
-          const message = cancelled ? "生成任务已取消" : "生成失败，请稍后重试或检查模型配置";
-          console.error("generation pipeline failed at " + stage);
+          const failure = getLlmFailureInfo(error);
+          const operation = operationLabel(failure?.operation);
+          const message = cancelled
+            ? "生成任务已取消"
+            : failure
+              ? `生成失败${operation ? `（${operation}）` : ""}：${failure.userMessage}`
+              : `生成在${stageLabel(stage)}阶段失败，请稍后重试`;
+          const failureMetadata = failure
+            ? {
+              failure_kind: failure.kind,
+              provider: failure.provider,
+              model: failure.model,
+              operation: failure.operation || null,
+              http_status: failure.status || null,
+              upstream_code: failure.code || null,
+              upstream_request_id: failure.requestId || null,
+              retryable: failure.retryable,
+            }
+            : {
+              failure_kind: cancelled ? "cancelled" : "pipeline",
+              operation: null,
+              retryable: false,
+            };
+          terminal = true;
+          console.error("generation pipeline failed", { stage, ...failureMetadata });
           await Promise.all(pendingPersistence);
           await updateGenerationJob(jobId, user.id, {
             status,
@@ -261,12 +321,27 @@ export async function POST(request: NextRequest) {
             error_message: message,
             completed_at: new Date().toISOString(),
           }).catch(() => undefined);
-          await recordJobEvent({ jobId, userId: user.id, step: stage, message, progress: progressForStep(stage) }).catch(() => undefined);
+          await recordJobEvent({
+            jobId,
+            userId: user.id,
+            step: stage,
+            message,
+            progress: progressForStep(stage),
+            metadata: failureMetadata,
+          }).catch(() => undefined);
           if (generationRecordId) {
             await getSupabaseAdmin().from("application_materials").delete().eq("generation_record_id", generationRecordId).eq("user_id", user.id);
             await getSupabaseAdmin().from("generation_records").delete().eq("id", generationRecordId).eq("user_id", user.id);
           }
-          if (!cancelled && !controllerClosed) controller.enqueue(sseEvent("error", message, { jobId, stage }));
+          if (!cancelled && !controllerClosed) {
+            controller.enqueue(sseEvent("error", message, {
+              jobId,
+              stage,
+              operation: failure?.operation,
+              errorKind: failure?.kind,
+              retryable: failure?.retryable,
+            }));
+          }
           if (uploadedKeys.length) await deleteObjects(uploadedKeys).catch(() => undefined);
           await getSupabaseAdmin().from("applications").update({
             status: "draft",

@@ -8,7 +8,7 @@ import type { ApplicationRow } from "./applications";
 import templateAnalysisConfig from "../../assets/template_analysis_cfg.json";
 import sourceCodeConfig from "../../assets/source_code_generation_cfg.json";
 import documentationConfig from "../../assets/documentation_generation_cfg.json";
-import type { Provider } from "./models";
+import type { Provider, ThinkingMode } from "./models";
 
 interface GenerationEvent {
   step: string;
@@ -62,17 +62,42 @@ function replacePrompt(template: string, values: Record<string, string>): string
   return Object.entries(values).reduce((result, [key, value]) => result.replaceAll("{{ " + key + " }}", value), template);
 }
 
-async function runBounded<T>(items: T[], concurrency: number, worker: (item: T, index: number) => Promise<string>): Promise<string[]> {
+function configuredThinking(config: { thinking?: string }): ThinkingMode {
+  // The legacy generator explicitly disabled DeepSeek reasoning. Keep that
+  // behavior for long document generation unless a config opts in later.
+  return config.thinking === "enabled" ? "enabled" : "disabled";
+}
+
+async function runBounded<T>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, index: number, signal: AbortSignal) => Promise<string>,
+  signal?: AbortSignal,
+): Promise<string[]> {
   const results = new Array<string>(items.length);
+  const batchController = new AbortController();
+  const batchSignal = signal ? AbortSignal.any([signal, batchController.signal]) : batchController.signal;
+  let firstError: unknown;
   let nextIndex = 0;
   async function consume() {
     while (true) {
       const index = nextIndex++;
       if (index >= items.length) return;
-      results[index] = await worker(items[index], index);
+      if (batchSignal.aborted) return;
+      try {
+        results[index] = await worker(items[index], index, batchSignal);
+      } catch (error) {
+        if (!firstError) {
+          firstError = error;
+          batchController.abort();
+        }
+        return;
+      }
     }
   }
   await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => consume()));
+  if (firstError) throw firstError;
+  throwIfAborted(signal);
   return results;
 }
 
@@ -114,6 +139,8 @@ export async function generateMaterials(input: GenerationInput): Promise<Generat
       temperature: templateAnalysisConfig.config.temperature,
       topP: templateAnalysisConfig.config.top_p,
       maxTokens: templateAnalysisConfig.config.max_completion_tokens,
+      thinking: configuredThinking(templateAnalysisConfig.config),
+      operation: "analyze",
       signal,
     }, (chunk) => {
       analyzed += chunk;
@@ -133,8 +160,8 @@ export async function generateMaterials(input: GenerationInput): Promise<Generat
     emit({ step: "source_code", message: `源代码处理完成，共${sourceInfo.lineCount}行` });
   } else {
     emit({ step: "source_code", message: `正在生成源代码文档（模块化生成，共${sourceModules.length}个模块）…` });
-    const results = await runBounded(sourceModules, 2, async (module, index) => {
-      throwIfAborted(signal);
+    const results = await runBounded(sourceModules, 2, async (module, index, batchSignal) => {
+      throwIfAborted(batchSignal);
       emit({ step: "source_code", message: `正在生成${module.description}（${index + 1}/${sourceModules.length}）…` });
       let content = "";
       await streamLlm({
@@ -148,7 +175,9 @@ export async function generateMaterials(input: GenerationInput): Promise<Generat
         temperature: sourceCodeConfig.config.temperature,
         topP: sourceCodeConfig.config.top_p,
         maxTokens: sourceCodeConfig.config.max_completion_tokens,
-        signal,
+        thinking: configuredThinking(sourceCodeConfig.config),
+        operation: `source-code/${module.name}`,
+        signal: batchSignal,
       }, (chunk) => {
         content += chunk;
         emit({ step: "source_code", message: `正在生成${module.description}…` });
@@ -156,14 +185,16 @@ export async function generateMaterials(input: GenerationInput): Promise<Generat
       const cleaned = cleanCodeContent(content);
       emit({ step: "source_code", message: `${module.description}生成完成，共${cleaned.split("\n").length}行` });
       return cleaned;
-    });
+    }, signal);
     sourceMarkdown = results.join("\n");
     emit({ step: "source_code", message: `源代码生成完成，共${sourceMarkdown.split("\n").length}行` });
   }
 
   emit({ step: "manual", message: `正在生成用户手册文档（模块化生成，共${manualModules.length}个章节）…` });
-  const manualResults = await runBounded(manualModules, 2, async (module, index) => {
-    throwIfAborted(signal);
+  // Manual chapters are long and the provider can reject two large thinking
+  // requests at once. Generate them serially and cancel the batch on failure.
+  const manualResults = await runBounded(manualModules, 1, async (module, index, batchSignal) => {
+    throwIfAborted(batchSignal);
     emit({ step: "manual", message: `正在生成${module.description}（${index + 1}/${manualModules.length}）…` });
     let content = "";
     await streamLlm({
@@ -176,8 +207,10 @@ export async function generateMaterials(input: GenerationInput): Promise<Generat
       ],
       temperature: documentationConfig.config.temperature,
       topP: documentationConfig.config.top_p,
-      maxTokens: documentationConfig.config.max_completion_tokens,
-      signal,
+      maxTokens: Math.min(documentationConfig.config.max_completion_tokens, 8000),
+      thinking: configuredThinking(documentationConfig.config),
+      operation: `manual/${module.name}`,
+      signal: batchSignal,
     }, (chunk) => {
       content += chunk;
       emit({ step: "manual", message: `正在生成${module.description}…` });
@@ -185,7 +218,7 @@ export async function generateMaterials(input: GenerationInput): Promise<Generat
     const cleaned = cleanManualContent(content);
     emit({ step: "manual", message: `${module.description}生成完成，共${cleaned.replace(/\s/g, "").length}字` });
     return cleaned;
-  });
+  }, signal);
   const manualMarkdown = manualResults.join("\n\n");
   emit({ step: "manual", message: `用户手册生成完成，共${manualMarkdown.replace(/\s/g, "").length}字` });
 

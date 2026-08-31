@@ -2,7 +2,8 @@
   "config": {
     "temperature": 0.5,
     "top_p": 0.8,
-    "max_completion_tokens": 15000
+    "max_completion_tokens": 15000,
+    "thinking": "disabled"
   },
   "sp": "你是专业的软件开发专家，仅生成纯Python核心代码，无任何多余内容、标记、文字。",
   "up": "请为以下软件生成符合软著申报要求的纯Python核心代码：\n\n软件信息：\n{{ software_info_markdown }}\n\n【输出格式】\n- 直接输出纯Python代码文本\n- 不包含代码块标记（```python或```）\n- 不包含任何注释\n- 不包含文件名、标题、说明文字\n\n【代码要求】\n- 语法正确、缩进规范（4空格）\n- 体现软件主要功能和技术特点\n- 确保代码完整不截断"
