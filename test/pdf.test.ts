@@ -1,0 +1,21 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { preflightPdf, renderMarkdownPdf } from "../src/server/pdf-generator.ts";
+
+test("native PDF renderer embeds readable Chinese content and paginates", async () => {
+  const markdown = [
+    "# 软著材料测试",
+    "",
+    "软件名称：材料生成系统，版本号：V1.0。",
+    "",
+    "```python",
+    ...Array.from({ length: 80 }, (_, index) => `print('第 ${index + 1} 行')`),
+    "```",
+  ].join("\n");
+  const result = await renderMarkdownPdf(markdown, "材料生成系统", "V1.0", "code");
+  assert.equal(result.buffer.subarray(0, 5).toString(), "%PDF-");
+  assert.equal(result.buffer.includes(Buffer.from("%%EOF")), true);
+  assert.ok(result.pageCount >= 1);
+  assert.ok(result.buffer.length > 1_000);
+  assert.deepEqual(preflightPdf(result, "材料生成系统", "V1.0", markdown, "code"), []);
+});

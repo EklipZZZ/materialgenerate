@@ -25,9 +25,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { apiEndpoint } from "@/lib/api-base";
 import { getApplicationProgress, getApplicationStatus } from "@/lib/application-progress";
-import { loadByok, type ByokConfig } from "@/lib/byok";
+import { type ByokConfig } from "@/lib/byok";
 import { authorizedFetch } from "@/lib/auth";
 import { recordToFormData, type CopyrightFormData } from "@/lib/copyright-form";
+import { loadPersistedByok } from "@/lib/llm-config-client";
 import {
   deleteApplication,
   getApplication,
@@ -53,7 +54,7 @@ export default function ApplicationEditPage() {
   useEffect(() => {
     if (!user || !id) return;
     let active = true;
-    Promise.all([getApplication(id), Promise.resolve(loadByok())])
+    Promise.all([getApplication(id), loadPersistedByok()])
       .then(([record, storedByok]) => {
         if (!active) return;
         setApplication(record);
@@ -95,8 +96,8 @@ export default function ApplicationEditPage() {
 
   async function enrich() {
     if (!id) return;
-    if (!byok?.apiKey.trim()) {
-      setError("请先在设置中配置临时 API Key");
+    if (!byok?.id) {
+      setError("请先在设置中保存 AI 模型配置");
       return;
     }
     setEnriching(true);
@@ -106,7 +107,7 @@ export default function ApplicationEditPage() {
       const response = await authorizedFetch(apiEndpoint("/api/enrich"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ applicationId: id, ...byok }),
+        body: JSON.stringify({ applicationId: id, llmConfigId: byok.id }),
       });
       const body = await response.json().catch(() => ({})) as { data?: Record<string, unknown>; msg?: string };
       if (!response.ok || !body.data) throw new Error(body.msg || "AI 补全失败");
@@ -220,8 +221,8 @@ export default function ApplicationEditPage() {
                 <Button className="app-full-button" asChild variant="secondary">
                   <Link href={`/app/generate/${id}`}><FileOutput size={15} />进入材料生成</Link>
                 </Button>
-                {!byok && <p className="form-hint app-side-hint">生成前需要先在设置中配置临时 API Key。</p>}
-                {!byok && <Link className="app-inline-link" href="/settings/llm-keys">前往 API Key 设置 <ArrowLeft size={13} className="app-arrow-forward" /></Link>}
+                {!byok?.id && <p className="form-hint app-side-hint">生成前需要先在设置中保存 AI 模型配置。</p>}
+                {!byok?.id && <Link className="app-inline-link" href="/settings/llm-keys">前往 AI 配置设置 <ArrowLeft size={13} className="app-arrow-forward" /></Link>}
               </div>
             </Panel>
           </div>

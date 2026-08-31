@@ -5,7 +5,10 @@ const nextConfig: NextConfig = {
     unoptimized: true,
   },
   outputFileTracingIncludes: {
-    "/api/generate": ["./assets/**/*"],
+    "/api/generate": [
+      "./assets/**/*",
+      "./node_modules/@fontsource/noto-sans-sc/files/noto-sans-sc-chinese-simplified-400-normal.woff",
+    ],
   },
 };
 

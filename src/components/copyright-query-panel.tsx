@@ -75,8 +75,8 @@ export function CopyrightQueryPanel({ disabled, refreshToken, byok, onReadyToGen
 
   async function enrich() {
     if (!selected?.id) return;
-    if (!byok?.apiKey.trim()) {
-      setError("请先配置 API Key");
+    if (!byok?.id) {
+      setError("请先保存 AI 模型配置");
       return;
     }
     setWorking(true);
@@ -85,7 +85,7 @@ export function CopyrightQueryPanel({ disabled, refreshToken, byok, onReadyToGen
       const response = await authorizedFetch(apiEndpoint("/api/enrich"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ applicationId: selected.id, ...byok }),
+        body: JSON.stringify({ applicationId: selected.id, llmConfigId: byok.id }),
       });
       const body = await response.json().catch(() => ({})) as { data?: Record<string, unknown>; msg?: string };
       if (!response.ok || !body.data) throw new Error(body.msg || "AI 补全失败");

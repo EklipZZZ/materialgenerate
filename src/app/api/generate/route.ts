@@ -2,28 +2,21 @@ import { randomUUID } from "node:crypto";
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { getOwnedApplication } from "@/server/applications";
-import { byokSchema } from "@/server/models";
+import { getOwnedLlmSecret } from "@/server/llm-configs";
+import { createGenerationJob, recordJobEvent, updateGenerationJob } from "@/server/generation-jobs";
 import { assertObjectSize, deleteObjects, downloadBuffer, signedDownloadUrl, uploadBuffer } from "@/server/storage";
 import { generateMaterials } from "@/server/generation-pipeline";
 import { errorResponse, fail, isAbortError, requireUser } from "@/server/http";
 import { getSupabaseAdmin } from "@/server/config";
+import { recordGeneratedMaterials } from "@/server/materials";
+import { generateRequestSchema } from "@/server/api-contracts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-const bodySchema = z.object({
-  applicationId: z.string().uuid(),
-  provider: byokSchema.shape.provider,
-  model: byokSchema.shape.model,
-  apiKey: byokSchema.shape.apiKey,
-  tableTemplate: z.string().max(300_000).optional().default(""),
-  skipAnalyze: z.boolean().optional().default(false),
-  sourceObjectKey: z.string().trim().max(500).optional(),
-  sourceFileName: z.string().trim().max(200).optional(),
-});
+const bodySchema = generateRequestSchema;
 
-const activeGenerations = new Set<string>();
 const MAX_SOURCE_ARCHIVE_BYTES = 100 * 1024 * 1024;
 
 function safeName(value: string): string {
@@ -34,6 +27,19 @@ function sourceNameFromKey(key: string): string {
   return key.split("/").pop() || "source.zip";
 }
 
+function progressForStep(step: string): number {
+  return {
+    queued: 0,
+    init: 5,
+    analyze: 15,
+    source_code: 35,
+    manual: 60,
+    convert: 82,
+    upload: 94,
+    complete: 100,
+  }[step] ?? 10;
+}
+
 function sseEvent(step: string, message: string, data?: unknown): Uint8Array {
   return new TextEncoder().encode("data: " + JSON.stringify({ step, message, data }) + "\n\n");
 }
@@ -42,13 +48,14 @@ export async function POST(request: NextRequest) {
   let user;
   let parsed: z.infer<typeof bodySchema>;
   let application;
+  let llmConfig;
   try {
     user = await requireUser(request);
     const body = bodySchema.safeParse(await request.json());
     if (!body.success) return fail(400, body.error.issues[0]?.message || "生成参数无效");
-    const byok = byokSchema.safeParse(body.data);
-    if (!byok.success) return fail(400, byok.error.issues[0]?.message || "模型配置无效");
     parsed = body.data;
+    llmConfig = await getOwnedLlmSecret(user.id, parsed.llmConfigId);
+    if (!llmConfig) return fail(404, "模型配置不存在，请先在设置中保存配置");
     application = await getOwnedApplication(parsed.applicationId, user.id, request.signal);
     if (!application) return fail(404, "申请不存在");
     if (parsed.sourceObjectKey && !parsed.sourceObjectKey.startsWith(`incoming/${user.id}/`)) {
@@ -58,10 +65,18 @@ export async function POST(request: NextRequest) {
     return errorResponse(error, "生成请求无效");
   }
 
-  const activeKey = user.id + ":" + application.id;
-  if (activeGenerations.has(activeKey)) return fail(409, "同一申请已有生成任务正在进行，请等待完成");
-  activeGenerations.add(activeKey);
-
+  let job;
+  try {
+    job = await createGenerationJob({
+      userId: user.id,
+      applicationId: application.id,
+      provider: llmConfig.provider,
+      model: llmConfig.model,
+    });
+  } catch (error) {
+    return errorResponse(error, "创建生成任务失败");
+  }
+  const jobId = job.id;
   const abortController = new AbortController();
   const abort = () => abortController.abort();
   request.signal.addEventListener("abort", abort, { once: true });
@@ -69,15 +84,47 @@ export async function POST(request: NextRequest) {
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
+      let lastPersistedAt = 0;
+      let lastPersistedSignature = "";
+      const pendingPersistence: Promise<void>[] = [];
       const emit = (step: string, message: string, data?: unknown) => {
-        if (controllerClosed || abortController.signal.aborted) return;
-        controller.enqueue(sseEvent(step, message, data));
+        if (!controllerClosed && !abortController.signal.aborted) {
+          controller.enqueue(sseEvent(step, message, data));
+        }
+        const progress = progressForStep(step);
+        const signature = step + "\n" + message;
+        const now = Date.now();
+        if (signature !== lastPersistedSignature || now - lastPersistedAt > 1_000) {
+          lastPersistedAt = now;
+          lastPersistedSignature = signature;
+          pendingPersistence.push(Promise.all([
+            recordJobEvent({ jobId, userId: user.id, step, message, progress }),
+            updateGenerationJob(jobId, user.id, {
+              current_step: step,
+              progress,
+              status: step === "complete" ? "completed" : "running",
+            }),
+          ]).then(() => undefined).catch(() => undefined));
+        }
       };
 
       void (async () => {
-        let stage = "validate";
+        let stage = "queued";
         const uploadedKeys: string[] = [];
+        let generationRecordId: string | null = null;
         try {
+          await updateGenerationJob(jobId, user.id, {
+            status: "running",
+            current_step: "init",
+            progress: 1,
+            started_at: new Date().toISOString(),
+          });
+          emit("init", "生成任务已启动");
+          await getSupabaseAdmin().from("applications").update({
+            status: "generating",
+            updated_at: new Date().toISOString(),
+          }).eq("id", application.id).eq("user_id", user.id);
+
           let sourceBuffer: Buffer | undefined;
           const sourceKey = parsed.sourceObjectKey;
           if (sourceKey) {
@@ -91,9 +138,9 @@ export async function POST(request: NextRequest) {
             application,
             tableTemplate: parsed.tableTemplate,
             skipAnalyze: parsed.skipAnalyze,
-            provider: parsed.provider,
-            model: parsed.model,
-            apiKey: parsed.apiKey,
+            provider: llmConfig.provider,
+            model: llmConfig.model,
+            apiKey: llmConfig.apiKey,
             sourceBuffer,
             sourceFileName: parsed.sourceFileName || (sourceKey ? sourceNameFromKey(sourceKey) : undefined),
             requestUrl: request.url,
@@ -101,23 +148,39 @@ export async function POST(request: NextRequest) {
             emit: (event) => emit(event.step, event.message, event.data),
           });
 
-          emit("upload", "正在上传生成材料…");
+          emit("upload", "正在上传 DOCX、PDF 和摘要材料…");
           const prefix = `generations/${user.id}/${application.id}/${Date.now()}-${randomUUID()}`;
           const softwareName = safeName(generated.softwareName);
           const sourceObjectKey = `${prefix}/${softwareName}-source-code.docx`;
+          const sourcePdfObjectKey = `${prefix}/${softwareName}-source-code.pdf`;
           const manualObjectKey = `${prefix}/${softwareName}-user-manual.docx`;
+          const manualPdfObjectKey = `${prefix}/${softwareName}-user-manual.pdf`;
+          const summaryPdfObjectKey = `${prefix}/${softwareName}-application-summary.pdf`;
           const collectionObjectKey = `${prefix}/${softwareName}-collection-form.md`;
-          uploadedKeys.push(sourceObjectKey, manualObjectKey, collectionObjectKey);
+          uploadedKeys.push(
+            sourceObjectKey,
+            sourcePdfObjectKey,
+            manualObjectKey,
+            manualPdfObjectKey,
+            summaryPdfObjectKey,
+            collectionObjectKey,
+          );
           stage = "storage-upload";
           await Promise.all([
             uploadBuffer(sourceObjectKey, generated.sourceDocx, "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+            uploadBuffer(sourcePdfObjectKey, generated.sourcePdf, "application/pdf"),
             uploadBuffer(manualObjectKey, generated.manualDocx, "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+            uploadBuffer(manualPdfObjectKey, generated.manualPdf, "application/pdf"),
+            uploadBuffer(summaryPdfObjectKey, generated.summaryPdf, "application/pdf"),
             uploadBuffer(collectionObjectKey, Buffer.from(generated.collectionMarkdown, "utf8"), "text/markdown; charset=utf-8"),
           ]);
 
-          const [sourceCodeDocx, userManualDocx, collectionFormMarkdown] = await Promise.all([
+          const [sourceCodeDocx, sourceCodePdf, userManualDocx, userManualPdf, applicationSummaryPdf, collectionFormMarkdown] = await Promise.all([
             signedDownloadUrl(sourceObjectKey),
+            signedDownloadUrl(sourcePdfObjectKey),
             signedDownloadUrl(manualObjectKey),
+            signedDownloadUrl(manualPdfObjectKey),
+            signedDownloadUrl(summaryPdfObjectKey),
             signedDownloadUrl(collectionObjectKey),
           ]);
           const record = await getSupabaseAdmin().from("generation_records").insert({
@@ -126,33 +189,82 @@ export async function POST(request: NextRequest) {
             file_name: generated.softwareName,
             source_code_summary: generated.sourceSummary,
             source_code_object_key: sourceObjectKey,
+            source_code_pdf_object_key: sourcePdfObjectKey,
             user_manual_object_key: manualObjectKey,
+            user_manual_pdf_object_key: manualPdfObjectKey,
+            application_summary_pdf_object_key: summaryPdfObjectKey,
             collection_form_object_key: collectionObjectKey,
-            provider: parsed.provider,
-            model: parsed.model,
+            job_id: jobId,
+            provider: llmConfig.provider,
+            model: llmConfig.model,
             status: "completed",
           }).select("id").single();
           if (record.error || !record.data) throw new Error("generation record creation failed");
-          await getSupabaseAdmin().from("applications").update({
+          const createdGenerationRecordId = record.data.id;
+          generationRecordId = createdGenerationRecordId;
+          await recordGeneratedMaterials({
+            applicationId: application.id,
+            userId: user.id,
+            generationRecordId: createdGenerationRecordId,
+            developmentMethod: String(application.development_method || "independent"),
+            files: [
+              { kind: "source_code_docx", fileName: `${softwareName}-source-code.docx`, objectKey: sourceObjectKey, mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", sizeBytes: generated.sourceDocx.length },
+              { kind: "source_code_pdf", fileName: `${softwareName}-source-code.pdf`, objectKey: sourcePdfObjectKey, mimeType: "application/pdf", sizeBytes: generated.sourcePdf.length },
+              { kind: "user_manual_docx", fileName: `${softwareName}-user-manual.docx`, objectKey: manualObjectKey, mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", sizeBytes: generated.manualDocx.length },
+              { kind: "user_manual_pdf", fileName: `${softwareName}-user-manual.pdf`, objectKey: manualPdfObjectKey, mimeType: "application/pdf", sizeBytes: generated.manualPdf.length },
+              { kind: "application_summary_pdf", fileName: `${softwareName}-application-summary.pdf`, objectKey: summaryPdfObjectKey, mimeType: "application/pdf", sizeBytes: generated.summaryPdf.length },
+            ],
+          });
+          const applicationUpdate = await getSupabaseAdmin().from("applications").update({
             status: "completed",
             updated_at: new Date().toISOString(),
           }).eq("id", application.id).eq("user_id", user.id);
+          if (applicationUpdate.error) throw new Error("application status update failed");
+          await updateGenerationJob(jobId, user.id, {
+            status: "completed",
+            current_step: "complete",
+            progress: 100,
+            completed_at: new Date().toISOString(),
+          });
           emit("complete", "生成完成", {
+            jobId,
             sourceCodeDocx,
+            sourceCodePdf,
             userManualDocx,
+            userManualPdf,
+            applicationSummaryPdf,
             collectionFormMarkdown,
             fileName: softwareName,
-            recordId: record.data.id,
+            recordId: createdGenerationRecordId,
+            pdfWarnings: generated.pdfWarnings,
           });
         } catch (error) {
-          if (!isAbortError(error) && !abortController.signal.aborted) {
-            console.error("generation pipeline failed at " + stage);
-            emit("error", "生成失败，请稍后重试或检查模型配置");
+          const cancelled = isAbortError(error) || abortController.signal.aborted;
+          const status = cancelled ? "cancelled" : "failed";
+          const message = cancelled ? "生成任务已取消" : "生成失败，请稍后重试或检查模型配置";
+          console.error("generation pipeline failed at " + stage);
+          await Promise.all(pendingPersistence);
+          await updateGenerationJob(jobId, user.id, {
+            status,
+            current_step: stage,
+            progress: progressForStep(stage),
+            error_message: message,
+            completed_at: new Date().toISOString(),
+          }).catch(() => undefined);
+          await recordJobEvent({ jobId, userId: user.id, step: stage, message, progress: progressForStep(stage) }).catch(() => undefined);
+          if (generationRecordId) {
+            await getSupabaseAdmin().from("application_materials").delete().eq("generation_record_id", generationRecordId).eq("user_id", user.id);
+            await getSupabaseAdmin().from("generation_records").delete().eq("id", generationRecordId).eq("user_id", user.id);
           }
+          if (!cancelled && !controllerClosed) controller.enqueue(sseEvent("error", message, { jobId, stage }));
           if (uploadedKeys.length) await deleteObjects(uploadedKeys).catch(() => undefined);
+          await getSupabaseAdmin().from("applications").update({
+            status: "draft",
+            updated_at: new Date().toISOString(),
+          }).eq("id", application.id).eq("user_id", user.id);
         } finally {
+          await Promise.all(pendingPersistence);
           if (parsed.sourceObjectKey) await deleteObjects([parsed.sourceObjectKey]).catch(() => undefined);
-          activeGenerations.delete(activeKey);
           request.signal.removeEventListener("abort", abort);
           if (!controllerClosed) {
             controllerClosed = true;

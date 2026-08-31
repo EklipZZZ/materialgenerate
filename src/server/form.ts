@@ -3,8 +3,24 @@ export const formFields = [
   "software_short_name",
   "version",
   "software_category",
+  "work_type",
   "development_date",
   "is_published",
+  "first_publication_date",
+  "first_publication_country",
+  "first_publication_city",
+  "development_method",
+  "rights_acquisition_method",
+  "rights_scope",
+  "rights_scope_description",
+  "original_registration_number",
+  "modification_description",
+  "application_method",
+  "applicant_address",
+  "postal_code",
+  "contact_name",
+  "contact_phone",
+  "contact_email",
   "development_hardware",
   "runtime_hardware",
   "development_os",
@@ -26,8 +42,24 @@ const labels: Record<string, string> = {
   software_short_name: "软件简称",
   version: "版本号",
   software_category: "软件分类",
+  work_type: "软件作品说明",
   development_date: "开发完成日期",
   is_published: "是否发表",
+  first_publication_date: "首次发表日期",
+  first_publication_country: "首次发表国家",
+  first_publication_city: "首次发表城市",
+  development_method: "开发方式",
+  rights_acquisition_method: "权利取得方式",
+  rights_scope: "权利范围",
+  rights_scope_description: "权利范围说明",
+  original_registration_number: "原登记号",
+  modification_description: "修改说明",
+  application_method: "申请办理方式",
+  applicant_address: "申请人地址",
+  postal_code: "邮政编码",
+  contact_name: "联系人",
+  contact_phone: "联系电话",
+  contact_email: "联系邮箱",
   development_hardware: "开发硬件环境",
   runtime_hardware: "运行硬件环境",
   development_os: "开发操作系统",
@@ -40,15 +72,71 @@ const labels: Record<string, string> = {
   target_industry: "面向领域/行业",
   main_functions: "主要功能",
   technical_features: "技术特点",
-  company_name: "公司名称",
-  credit_code: "统一社会信用代码",
+  company_name: "兼容旧字段：公司名称",
+  credit_code: "兼容旧字段：统一社会信用代码",
 };
 
+const displayLabels: Record<string, string> = {
+  original: "原创",
+  modified: "修改",
+  independent: "单独开发",
+  cooperative: "合作开发",
+  commissioned: "委托开发",
+  assigned_task: "下达任务开发",
+  transfer: "受让",
+  inheritance: "继承",
+  assumption: "承受",
+  all: "全部权利",
+  partial: "部分权利",
+  copyright_holder: "著作权人申请办理",
+  agent: "代理人申请办理",
+};
+
+function displayValue(key: string, value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (key === "is_published") return value === true ? "已发表" : "未发表";
+  return displayLabels[String(value)] || String(value);
+}
+
+function holderSummary(row: Record<string, unknown>): string {
+  const holders = Array.isArray(row.copyright_holders) ? row.copyright_holders : [];
+  const summary = holders
+    .filter((value): value is Record<string, unknown> => Boolean(value) && typeof value === "object")
+    .sort((left, right) => Number(left.sort_order || 0) - Number(right.sort_order || 0))
+    .map((holder) => `${String(holder.name || "")}（${holder.holder_type === "person" ? "自然人" : "单位"}）`)
+    .filter((value) => !value.startsWith("（"))
+    .join("；");
+  return summary || String(row.company_name || "");
+}
+
+function holderDetails(row: Record<string, unknown>): string {
+  const holders = Array.isArray(row.copyright_holders) ? row.copyright_holders : [];
+  return holders
+    .filter((value): value is Record<string, unknown> => Boolean(value) && typeof value === "object")
+    .sort((left, right) => Number(left.sort_order || 0) - Number(right.sort_order || 0))
+    .map((holder) => {
+      const type = holder.holder_type === "person" ? "自然人" : "单位";
+      const dateLabel = holder.holder_type === "person" ? "出生日期" : "成立日期";
+      const location = [holder.nationality, holder.province, holder.city].filter(Boolean).join("/");
+      const date = holder.birth_or_established_date ? `，${dateLabel}：${String(holder.birth_or_established_date)}` : "";
+      return `${String(holder.name || "")}（${type}；${String(holder.category || "")}；${String(holder.document_type || "")}：${String(holder.document_number || "")}；${location || "未填写地区"}${date}）`;
+    })
+    .filter((value) => !value.startsWith("（"))
+    .join("；");
+}
+
 export function snapshotFields(row: Record<string, unknown>) {
-  return Object.fromEntries(formFields.filter((key) => row[key] !== undefined).map((key) => [key, row[key]]));
+  return Object.fromEntries(
+    formFields
+      .filter((key) => row[key] !== undefined)
+      .map((key) => [key, row[key]]),
+  );
 }
 
 export function formToMarkdown(row: Record<string, unknown>): string {
+  const effective = row.enriched_data && typeof row.enriched_data === "object"
+    ? { ...row, ...(row.enriched_data as Record<string, unknown>) }
+    : row;
   const lines = [
     "### 计算机软件著作权登记信息采集表",
     "",
@@ -56,10 +144,15 @@ export function formToMarkdown(row: Record<string, unknown>): string {
     "| :--- | :--- |",
   ];
   for (const key of formFields) {
-    const value = key === "is_published"
-      ? row[key] === true ? "已发表" : "未发表"
-      : String(row[key] ?? "");
-    lines.push("| **" + labels[key] + "** | " + value.replace(/\|/g, "\\|") + " |");
+    const rawValue = key === "company_name" && !String(effective.company_name || "").trim()
+      ? holderSummary(effective)
+      : effective[key];
+    const value = displayValue(key, rawValue).replace(/\|/g, "\\|");
+    lines.push("| **" + labels[key] + "** | " + value + " |");
+  }
+  if (Array.isArray(effective.copyright_holders) && effective.copyright_holders.length) {
+    const details = holderDetails(effective).replace(/\|/g, "\\|");
+    if (details) lines.push("| **著作权人明细** | " + details + " |");
   }
   return lines.join("\n");
 }
@@ -74,7 +167,11 @@ export function parseEnrichedMarkdown(markdown: string, base: Record<string, unk
     if (!key || !match[2].trim()) continue;
     if (key === "is_published") result[key] = match[2].trim() === "已发表";
     else if (key === "source_code_lines") result[key] = Number.parseInt(match[2], 10) || 0;
-    else result[key] = match[2].trim();
+    else if (["work_type", "development_method", "rights_acquisition_method", "rights_scope", "application_method"].includes(key)) {
+      const label = match[2].trim();
+      const entry = Object.entries(displayLabels).find(([, value]) => value === label);
+      if (entry) result[key] = entry[0];
+    } else result[key] = match[2].trim();
   }
   return result;
 }

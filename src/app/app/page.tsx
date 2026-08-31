@@ -155,8 +155,8 @@ export default function AppPage() {
               <span className="app-status app-status--ready"><span className="app-status__dot" />按需调用</span>
             </div>
             <h2>AI 服务</h2>
-            <p>用于补全申请信息和生成申报材料，Key 不会保存到系统。</p>
-            <div className="app-side-panel__model"><Cpu size={14} />当前配置保存在本地标签页</div>
+            <p>用于补全申请信息和生成申报材料，Key 会在服务端加密保存。</p>
+            <div className="app-side-panel__model"><Cpu size={14} />当前配置保存为加密服务配置</div>
             <Link href="/settings/llm-keys" className="app-side-panel__link">管理 AI 设置 <ArrowRight size={14} /></Link>
           </Panel>
           <Panel className="app-tip-panel">

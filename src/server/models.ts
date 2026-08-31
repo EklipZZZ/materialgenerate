@@ -28,11 +28,16 @@ const providerEndpoints: Record<Provider, string> = {
 };
 
 export const providerSchema = z.enum(["openai", "deepseek"]);
+export const modelSchema = z.string().trim().min(1).max(100);
+export const apiKeySchema = z.string().trim().min(10).max(500).meta({
+  writeOnly: true,
+  description: "供应商 API Key，仅用于保存或测试，不会在响应中返回。",
+});
 
 export const byokSchema = z.object({
   provider: providerSchema,
-  model: z.string().trim().min(1).max(100),
-  apiKey: z.string().trim().min(10).max(500),
+  model: modelSchema,
+  apiKey: apiKeySchema,
 }).superRefine((value, context) => {
   if (!isAllowedModel(value.provider, value.model)) {
     context.addIssue({ code: "custom", path: ["model"], message: "不支持的模型" });
@@ -40,6 +45,19 @@ export const byokSchema = z.object({
 });
 
 export type ByokInput = z.infer<typeof byokSchema>;
+
+export const llmConfigInputSchema = z.object({
+  name: z.string().trim().min(1).max(100).optional(),
+  provider: providerSchema,
+  model: modelSchema,
+  apiKey: apiKeySchema,
+}).superRefine((value, context) => {
+  if (!isAllowedModel(value.provider, value.model)) {
+    context.addIssue({ code: "custom", path: ["model"], message: "不支持的模型" });
+  }
+});
+
+export type LlmConfigInput = z.infer<typeof llmConfigInputSchema>;
 
 export function isAllowedModel(provider: string, model: string): boolean {
   if (!(provider in providerModels)) return false;

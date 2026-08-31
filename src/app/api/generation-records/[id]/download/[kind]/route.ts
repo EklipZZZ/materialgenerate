@@ -1,16 +1,18 @@
 import { NextRequest } from "next/server";
-import { z } from "zod";
 import { getSupabaseAdmin } from "@/server/config";
 import { errorResponse, fail, ok, requireUser } from "@/server/http";
 import { signedDownloadUrl } from "@/server/storage";
+import { downloadKindSchema, generationRecordIdSchema } from "@/server/api-contracts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const idSchema = z.string().uuid();
 const keyFields = {
   source_code: "source_code_object_key",
+  source_code_pdf: "source_code_pdf_object_key",
   user_manual: "user_manual_object_key",
+  user_manual_pdf: "user_manual_pdf_object_key",
+  application_summary_pdf: "application_summary_pdf_object_key",
   collection_form: "collection_form_object_key",
 } as const;
 
@@ -22,9 +24,10 @@ export async function GET(request: NextRequest, context: Context) {
   try {
     const user = await requireUser(request);
     const params = await context.params;
-    if (!idSchema.safeParse(params.id).success) return fail(400, "生成记录 ID 无效");
-    const field = keyFields[params.kind as keyof typeof keyFields];
-    if (!field) return fail(400, "下载类型无效");
+    if (!generationRecordIdSchema.safeParse(params.id).success) return fail(400, "生成记录 ID 无效");
+    const kind = downloadKindSchema.safeParse(params.kind);
+    if (!kind.success) return fail(400, "下载类型无效");
+    const field = keyFields[kind.data];
     const result = await getSupabaseAdmin().from("generation_records")
       .select(field).eq("id", params.id).eq("user_id", user.id).maybeSingle();
     if (result.error || !result.data) return fail(404, "生成记录不存在");

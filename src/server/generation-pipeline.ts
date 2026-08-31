@@ -3,6 +3,7 @@ import { streamLlm } from "./llm";
 import { cleanCodeContent, cleanManualContent, manualModules, sourceModules } from "./generation-prompts";
 import { extractSourceCode } from "./source-extractor";
 import { convertMarkdown } from "./converter";
+import { preflightPdf, renderMarkdownPdf } from "./pdf-generator";
 import type { ApplicationRow } from "./applications";
 import templateAnalysisConfig from "../../assets/template_analysis_cfg.json";
 import sourceCodeConfig from "../../assets/source_code_generation_cfg.json";
@@ -36,6 +37,10 @@ export interface GeneratedMaterials {
   sourceSummary: string;
   sourceDocx: Buffer;
   manualDocx: Buffer;
+  sourcePdf: Buffer;
+  manualPdf: Buffer;
+  summaryPdf: Buffer;
+  pdfWarnings: string[];
   softwareName: string;
   version: string;
 }
@@ -185,14 +190,25 @@ export async function generateMaterials(input: GenerationInput): Promise<Generat
   emit({ step: "manual", message: `用户手册生成完成，共${manualMarkdown.replace(/\s/g, "").length}字` });
 
   throwIfAborted(signal);
-  emit({ step: "convert", message: "正在转换源代码文档…" });
+  emit({ step: "convert", message: "正在生成 DOCX 和 PDF 文档…" });
   const softwareName = String(application.software_full_name || application.software_short_name || "软件著作权申报材料");
   const version = String(application.version || "V1.0");
   const [sourceDocx, manualDocx] = await Promise.all([
     convertMarkdown("code", sourceMarkdown, softwareName, version, input.requestUrl, signal),
     convertMarkdown("manual", manualMarkdown, softwareName, version, input.requestUrl, signal),
   ]);
-  emit({ step: "convert", message: "DOCX 文档转换完成" });
+  const [sourcePdfResult, manualPdfResult, summaryPdfResult] = await Promise.all([
+    renderMarkdownPdf(sourceMarkdown, softwareName, version, "code"),
+    renderMarkdownPdf(manualMarkdown, softwareName, version, "manual"),
+    renderMarkdownPdf(collectionMarkdown, softwareName, version, "summary"),
+  ]);
+  const pdfWarnings = [
+    ...preflightPdf(sourcePdfResult, softwareName, version, sourceMarkdown, "code"),
+    ...preflightPdf(manualPdfResult, softwareName, version, manualMarkdown, "manual"),
+    ...preflightPdf(summaryPdfResult, softwareName, version, collectionMarkdown, "summary"),
+  ];
+  for (const warning of [...new Set(pdfWarnings)]) emit({ step: "convert", message: `PDF 预检提醒：${warning}` });
+  emit({ step: "convert", message: "DOCX 和 PDF 文档生成完成" });
   return {
     sourceMarkdown,
     manualMarkdown,
@@ -200,6 +216,10 @@ export async function generateMaterials(input: GenerationInput): Promise<Generat
     sourceSummary: sourceInfo?.summary || "未上传源代码压缩包，已根据申请信息自动生成源代码文档。",
     sourceDocx,
     manualDocx,
+    sourcePdf: sourcePdfResult.buffer,
+    manualPdf: manualPdfResult.buffer,
+    summaryPdf: summaryPdfResult.buffer,
+    pdfWarnings: [...new Set(pdfWarnings)],
     softwareName,
     version,
   };

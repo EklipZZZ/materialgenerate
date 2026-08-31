@@ -1,9 +1,15 @@
 "use client";
 
+import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import type { CopyrightFormData } from "@/lib/copyright-form";
+import {
+  EMPTY_COPYRIGHT_HOLDER,
+  type CopyrightFormData,
+  type CopyrightHolder,
+  type HolderType,
+} from "@/lib/copyright-form";
 
 interface Props {
   form: CopyrightFormData;
@@ -11,12 +17,27 @@ interface Props {
   disabled?: boolean;
 }
 
+const holderCategories: Record<HolderType, string[]> = {
+  person: ["自然人"],
+  organization: ["企业法人", "事业单位法人", "机关法人", "社会团体法人", "其他组织"],
+};
+
+const holderDocumentTypes: Record<HolderType, string[]> = {
+  person: ["居民身份证", "护照", "港澳居民来往内地通行证", "台湾居民来往大陆通行证", "其他身份证件"],
+  organization: ["统一社会信用代码证书", "营业执照", "事业单位法人证书", "其他证件"],
+};
+
+const developmentMethodLabels = {
+  independent: "单独开发",
+  cooperative: "合作开发",
+} as const;
+
 export function CopyrightFormEditor({ form, onChange, disabled }: Props) {
   const set = <K extends keyof CopyrightFormData>(key: K, value: CopyrightFormData[K]) => {
     onChange({ ...form, [key]: value });
   };
 
-  const input = (key: keyof CopyrightFormData, label: string, type = "text") => (
+  const input = (key: keyof CopyrightFormData, label: string, type = "text", placeholder?: string) => (
     <div className="form-field" key={key}>
       <label className="form-label" htmlFor={String(key)}>{label}</label>
       <Input
@@ -24,6 +45,7 @@ export function CopyrightFormEditor({ form, onChange, disabled }: Props) {
         type={type}
         min={type === "number" ? 0 : undefined}
         value={String(form[key] ?? "")}
+        placeholder={placeholder}
         onChange={(event) => {
           const value = key === "source_code_lines"
             ? Number.parseInt(event.target.value, 10) || 0
@@ -35,12 +57,41 @@ export function CopyrightFormEditor({ form, onChange, disabled }: Props) {
     </div>
   );
 
+  const setHolder = (index: number, patch: Partial<CopyrightHolder>) => {
+    const copyright_holders = form.copyright_holders.map((holder, holderIndex) => (
+      holderIndex === index ? { ...holder, ...patch } : holder
+    ));
+    set("copyright_holders", copyright_holders);
+  };
+
+  const addHolder = () => {
+    set("copyright_holders", [
+      ...form.copyright_holders,
+      { ...EMPTY_COPYRIGHT_HOLDER, sort_order: form.copyright_holders.length },
+    ]);
+  };
+
+  const removeHolder = (index: number) => {
+    set("copyright_holders", form.copyright_holders
+      .filter((_, holderIndex) => holderIndex !== index)
+      .map((holder, sortOrder) => ({ ...holder, sort_order: sortOrder })));
+  };
+
+  const selectHolderType = (index: number, holderType: HolderType) => {
+    setHolder(index, {
+      holder_type: holderType,
+      category: holderCategories[holderType][0],
+      document_type: holderDocumentTypes[holderType][0],
+      birth_or_established_date: "",
+    });
+  };
+
   return (
     <div className="application-editor">
       <section className="form-section">
         <div className="form-section__header">
           <h2>软件基本信息</h2>
-          <p>登记证书上展示的名称和版本信息。</p>
+          <p>登记证书上展示的软件名称、版本和发表状态。</p>
         </div>
         <div className="form-grid">
           {input("software_full_name", "软件全称")}
@@ -49,11 +100,156 @@ export function CopyrightFormEditor({ form, onChange, disabled }: Props) {
           {input("software_category", "软件分类")}
           {input("development_date", "开发完成日期", "date")}
           <div className="form-field">
+            <label className="form-label" htmlFor="work_type">软件作品说明</label>
+            <select id="work_type" className="app-select" value={form.work_type} onChange={(event) => set("work_type", event.target.value as CopyrightFormData["work_type"])} disabled={disabled}>
+              <option value="original">原创</option>
+              <option value="modified">修改</option>
+            </select>
+          </div>
+          <div className="form-field">
             <span className="form-label">是否已发表</span>
             <div className="form-toggle-group">
               <Button type="button" size="sm" variant={!form.is_published ? "default" : "outline"} onClick={() => set("is_published", false)} disabled={disabled}>未发表</Button>
               <Button type="button" size="sm" variant={form.is_published ? "default" : "outline"} onClick={() => set("is_published", true)} disabled={disabled}>已发表</Button>
             </div>
+          </div>
+          {form.is_published && <>
+            {input("first_publication_date", "首次发表日期", "date")}
+            {input("first_publication_country", "首次发表国家")}
+            {input("first_publication_city", "首次发表城市")}
+          </>}
+        </div>
+      </section>
+
+      <section className="form-section">
+        <div className="form-section__header">
+          <h2>著作权人</h2>
+          <p>请明确录入实际著作权人；参与开发但不主张权利的人员不要添加。个人和单位可以混合录入。</p>
+        </div>
+        <div className="holder-list">
+          {form.copyright_holders.map((holder, index) => {
+            const typeLabel = holder.holder_type === "person" ? "自然人" : "企业 / 单位";
+            return (
+              <div className="holder-card" key={holder.id || `${holder.holder_type}-${index}`}>
+                <div className="holder-card__header">
+                  <strong>著作权人 {index + 1}</strong>
+                  <Button type="button" size="sm" variant="ghost" onClick={() => removeHolder(index)} disabled={disabled}><Trash2 size={14} />删除</Button>
+                </div>
+                <div className="form-grid">
+                  <div className="form-field">
+                    <label className="form-label" htmlFor={`holder-${index}-type`}>主体类型</label>
+                    <select id={`holder-${index}-type`} className="app-select" value={holder.holder_type} onChange={(event) => selectHolderType(index, event.target.value as HolderType)} disabled={disabled}>
+                      <option value="person">自然人</option>
+                      <option value="organization">企业 / 单位</option>
+                    </select>
+                  </div>
+                  <div className="form-field">
+                    <label className="form-label" htmlFor={`holder-${index}-name`}>{typeLabel === "自然人" ? "姓名" : "单位名称"}</label>
+                    <Input id={`holder-${index}-name`} value={holder.name} onChange={(event) => setHolder(index, { name: event.target.value })} disabled={disabled} />
+                  </div>
+                  <div className="form-field">
+                    <label className="form-label" htmlFor={`holder-${index}-category`}>主体类别</label>
+                    <select id={`holder-${index}-category`} className="app-select" value={holder.category} onChange={(event) => setHolder(index, { category: event.target.value })} disabled={disabled}>
+                      {holderCategories[holder.holder_type].map((item) => <option value={item} key={item}>{item}</option>)}
+                    </select>
+                  </div>
+                  <div className="form-field">
+                    <label className="form-label" htmlFor={`holder-${index}-document-type`}>证件类型</label>
+                    <select id={`holder-${index}-document-type`} className="app-select" value={holder.document_type} onChange={(event) => setHolder(index, { document_type: event.target.value })} disabled={disabled}>
+                      {holderDocumentTypes[holder.holder_type].map((item) => <option value={item} key={item}>{item}</option>)}
+                    </select>
+                  </div>
+                  <div className="form-field form-field--full">
+                    <label className="form-label" htmlFor={`holder-${index}-document-number`}>{holder.holder_type === "person" ? "证件号码" : "统一社会信用代码或其他证件号码"}</label>
+                    <Input id={`holder-${index}-document-number`} value={holder.document_number} onChange={(event) => setHolder(index, { document_number: event.target.value })} disabled={disabled} />
+                  </div>
+                  <div className="form-field">
+                    <label className="form-label" htmlFor={`holder-${index}-nationality`}>国籍</label>
+                    <Input id={`holder-${index}-nationality`} value={holder.nationality} onChange={(event) => setHolder(index, { nationality: event.target.value })} disabled={disabled} />
+                  </div>
+                  <div className="form-field">
+                    <label className="form-label" htmlFor={`holder-${index}-province`}>省份</label>
+                    <Input id={`holder-${index}-province`} value={holder.province} onChange={(event) => setHolder(index, { province: event.target.value })} disabled={disabled} />
+                  </div>
+                  <div className="form-field">
+                    <label className="form-label" htmlFor={`holder-${index}-city`}>城市</label>
+                    <Input id={`holder-${index}-city`} value={holder.city} onChange={(event) => setHolder(index, { city: event.target.value })} disabled={disabled} />
+                  </div>
+                  <div className="form-field">
+                    <label className="form-label" htmlFor={`holder-${index}-date`}>{holder.holder_type === "person" ? "出生日期" : "成立日期"}</label>
+                    <Input id={`holder-${index}-date`} type="date" value={holder.birth_or_established_date || ""} onChange={(event) => setHolder(index, { birth_or_established_date: event.target.value })} disabled={disabled} />
+                  </div>
+                  <div className="form-field">
+                    <label className="form-label" htmlFor={`holder-${index}-park`}>园区（可选）</label>
+                    <Input id={`holder-${index}-park`} value={holder.park || ""} onChange={(event) => setHolder(index, { park: event.target.value })} disabled={disabled} />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          <Button type="button" variant="outline" onClick={addHolder} disabled={disabled}><Plus size={15} />添加著作权人</Button>
+          {!form.copyright_holders.length && <p className="form-hint">可以先保存软件基本信息，提交前请补齐至少一名著作权人的完整证件信息。</p>}
+        </div>
+      </section>
+
+      <section className="form-section">
+        <div className="form-section__header">
+          <h2>开发方式与权利说明</h2>
+          <p>这些字段对应官方登记表中的作品说明、开发方式、权利取得方式和权利范围。</p>
+        </div>
+        <div className="form-grid">
+          <div className="form-field">
+            <label className="form-label" htmlFor="development_method">开发方式</label>
+            <select id="development_method" className="app-select" value={form.development_method} onChange={(event) => set("development_method", event.target.value as CopyrightFormData["development_method"])} disabled={disabled}>
+              {Object.entries(developmentMethodLabels).map(([key, label]) => <option value={key} key={key}>{label}</option>)}
+              {!Object.hasOwn(developmentMethodLabels, form.development_method) && <option value={form.development_method}>历史预留方式</option>}
+            </select>
+          </div>
+          <div className="form-field">
+            <label className="form-label" htmlFor="rights_acquisition_method">权利取得方式</label>
+            <select id="rights_acquisition_method" className="app-select" value={form.rights_acquisition_method} onChange={(event) => set("rights_acquisition_method", event.target.value as CopyrightFormData["rights_acquisition_method"])} disabled={disabled}>
+              <option value="original">原始取得</option><option value="transfer">受让</option><option value="inheritance">继承</option><option value="assumption">承受</option>
+            </select>
+          </div>
+          <div className="form-field">
+            <label className="form-label" htmlFor="rights_scope">权利范围</label>
+            <select id="rights_scope" className="app-select" value={form.rights_scope} onChange={(event) => set("rights_scope", event.target.value as CopyrightFormData["rights_scope"])} disabled={disabled}>
+              <option value="all">全部权利</option><option value="partial">部分权利</option>
+            </select>
+          </div>
+          {form.work_type === "modified" && <>
+            {input("original_registration_number", "原登记号")}
+            <div className="form-field form-field--full">
+              <label className="form-label" htmlFor="modification_description">修改说明</label>
+              <Textarea id="modification_description" className="min-h-24" value={form.modification_description} onChange={(event) => set("modification_description", event.target.value)} disabled={disabled} />
+            </div>
+          </>}
+          {form.rights_scope === "partial" && <div className="form-field form-field--full">
+            <label className="form-label" htmlFor="rights_scope_description">权利范围说明</label>
+            <Textarea id="rights_scope_description" className="min-h-24" value={form.rights_scope_description} onChange={(event) => set("rights_scope_description", event.target.value)} disabled={disabled} />
+          </div>}
+        </div>
+      </section>
+
+      <section className="form-section">
+        <div className="form-section__header">
+          <h2>申请人和联系人</h2>
+          <p>申请人可以是著作权人，也可以指定代理人办理；地址和联系方式由用户自行确认。</p>
+        </div>
+        <div className="form-grid">
+          <div className="form-field">
+            <label className="form-label" htmlFor="application_method">申请办理方式</label>
+            <select id="application_method" className="app-select" value={form.application_method} onChange={(event) => set("application_method", event.target.value as CopyrightFormData["application_method"])} disabled={disabled}>
+              <option value="copyright_holder">著作权人申请办理</option><option value="agent">代理人申请办理</option>
+            </select>
+          </div>
+          {input("postal_code", "邮政编码")}
+          {input("contact_name", "联系人")}
+          {input("contact_phone", "联系电话", "tel")}
+          {input("contact_email", "联系邮箱", "email")}
+          <div className="form-field form-field--full">
+            <label className="form-label" htmlFor="applicant_address">申请人地址</label>
+            <Input id="applicant_address" value={form.applicant_address} onChange={(event) => set("applicant_address", event.target.value)} disabled={disabled} />
           </div>
         </div>
       </section>
@@ -78,13 +274,11 @@ export function CopyrightFormEditor({ form, onChange, disabled }: Props) {
       <section className="form-section">
         <div className="form-section__header">
           <h2>软件说明</h2>
-          <p>尽量使用客观、完整的业务描述，方便后续生成材料。</p>
+          <p>尽量使用客观、完整的业务描述，方便后续生成源代码文档和用户手册。</p>
         </div>
         <div className="form-grid">
           {input("development_purpose", "开发目的")}
           {input("target_industry", "面向领域 / 行业")}
-          {input("company_name", "著作权人 / 公司名称")}
-          {input("credit_code", "统一社会信用代码")}
           <div className="form-field form-field--full">
             <label className="form-label" htmlFor="main_functions">主要功能</label>
             <Textarea id="main_functions" className="min-h-36" value={form.main_functions} onChange={(event) => set("main_functions", event.target.value)} disabled={disabled} placeholder="建议填写软件解决的问题、主要模块和用户操作流程。" />

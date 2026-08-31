@@ -1,18 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { NextRequest } from "next/server";
-import { z } from "zod";
 import { createSignedUpload } from "@/server/storage";
 import { errorResponse, fail, ok, requireUser } from "@/server/http";
+import { sourceUploadSchema } from "@/server/api-contracts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
-const bodySchema = z.object({
-  fileName: z.string().trim().min(1).max(200),
-  contentType: z.string().trim().max(120).optional(),
-  size: z.number().int().positive().max(MAX_UPLOAD_BYTES),
-});
+const bodySchema = sourceUploadSchema;
 
 function safeFileName(value: string): string {
   return value.replace(/[\\/:*?"<>|\x00-\x1f]/g, "_").replace(/\.\.+/g, "_").trim().slice(0, 120) || "source.zip";

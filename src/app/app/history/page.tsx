@@ -34,7 +34,10 @@ interface Envelope<T> {
 
 const downloads = [
   { kind: "source_code", label: "源代码文档", icon: FileArchive },
+  { kind: "source_code_pdf", label: "源代码 PDF", icon: FileArchive },
   { kind: "user_manual", label: "用户手册", icon: FileOutput },
+  { kind: "user_manual_pdf", label: "用户手册 PDF", icon: FileOutput },
+  { kind: "application_summary_pdf", label: "申请信息摘要 PDF", icon: FileOutput },
   { kind: "collection_form", label: "采集表", icon: FileOutput },
 ] as const;
 
@@ -129,7 +132,7 @@ export default function HistoryPage() {
                         <span className="app-table__name">{applicationNames.get(record.application_id || "") || record.file_name || "未命名申请"}</span>
                         <span className="app-table__subtext">{record.file_name || "申报材料"}</span>
                       </td>
-                      <td><span className="app-file-count"><FileOutput size={14} />3 个文件</span></td>
+                      <td><span className="app-file-count"><FileOutput size={14} />6 个产物</span></td>
                       <td>{record.provider && record.model ? `${record.provider} / ${record.model}` : "—"}</td>
                       <td><StatusBadge status={status} /></td>
                       <td>{formatDateTime(record.created_at)}</td>

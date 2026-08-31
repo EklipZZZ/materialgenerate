@@ -5,6 +5,7 @@ const completionFields: Array<keyof CopyrightFormData> = [
   "software_short_name",
   "software_category",
   "development_date",
+  "development_method",
   "development_tools",
   "runtime_platform",
   "programming_language",
@@ -12,8 +13,6 @@ const completionFields: Array<keyof CopyrightFormData> = [
   "target_industry",
   "main_functions",
   "technical_features",
-  "company_name",
-  "credit_code",
 ];
 
 function hasValue(value: unknown): boolean {
@@ -26,11 +25,21 @@ export function getApplicationProgress(form: CopyrightFormData): {
   total: number;
   percent: number;
 } {
-  const completed = completionFields.filter((field) => hasValue(form[field])).length;
+  const fieldsCompleted = completionFields.filter((field) => hasValue(form[field])).length;
+  const holdersCompleted = form.copyright_holders.length > 0 && form.copyright_holders.every((holder) => (
+    hasValue(holder.name)
+    && hasValue(holder.document_type)
+    && hasValue(holder.document_number)
+    && hasValue(holder.nationality)
+    && hasValue(holder.province)
+    && hasValue(holder.city)
+  ));
+  const completed = fieldsCompleted + (holdersCompleted ? 1 : 0);
+  const total = completionFields.length + 1;
   return {
     completed,
-    total: completionFields.length,
-    percent: Math.round((completed / completionFields.length) * 100),
+    total,
+    percent: Math.round((completed / total) * 100),
   };
 }
 

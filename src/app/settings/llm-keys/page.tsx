@@ -15,7 +15,7 @@ export default function LlmKeysPage() {
       <PageHeader
         eyebrow="设置 / AI 配置"
         title="设置"
-        description="管理当前浏览器 Tab 使用的 AI 服务配置和数据安全选项。"
+        description="管理已加密保存的 AI 服务配置和数据安全选项。"
       >
         <Link className="app-back-link" href="/app"><ArrowLeft size={14} />返回总览</Link>
       </PageHeader>
@@ -23,7 +23,7 @@ export default function LlmKeysPage() {
       <div className="settings-layout">
         <nav className="settings-nav" aria-label="设置导航">
           <span className="settings-nav__item settings-nav__item--active"><KeyRound size={14} />AI 配置</span>
-          <div className="settings-nav__note"><LockKeyhole size={14} /><span>安全策略由系统统一管理，API Key 不会写入数据库。</span></div>
+          <div className="settings-nav__note"><LockKeyhole size={14} /><span>API Key 使用服务端加密保存，页面不会展示完整凭据。</span></div>
         </nav>
         <Panel>
           <ByokPanel value={byok} onChange={setByok} />

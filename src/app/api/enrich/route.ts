@@ -1,39 +1,34 @@
 import { NextRequest } from "next/server";
-import { z } from "zod";
 import {
   effectiveApplication,
   getOwnedApplication,
   saveOwnedApplicationEnrichment,
 } from "@/server/applications";
-import { byokSchema } from "@/server/models";
+import { getOwnedLlmSecret } from "@/server/llm-configs";
 import { formToMarkdown, parseEnrichedMarkdown, snapshotFields } from "@/server/form";
 import { callLlm } from "@/server/llm";
 import { errorResponse, fail, ok, requireUser } from "@/server/http";
+import { enrichRequestSchema } from "@/server/api-contracts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const bodySchema = z.object({
-  applicationId: z.string().uuid(),
-  provider: byokSchema.shape.provider,
-  model: byokSchema.shape.model,
-  apiKey: byokSchema.shape.apiKey,
-});
+const bodySchema = enrichRequestSchema;
 
 export async function POST(request: NextRequest) {
   try {
     const parsed = bodySchema.safeParse(await request.json());
     if (!parsed.success) return fail(400, "申请参数或模型配置无效");
-    const byok = byokSchema.safeParse(parsed.data);
-    if (!byok.success) return fail(400, byok.error.issues[0]?.message || "模型配置无效");
     const user = await requireUser(request);
+    const llmConfig = await getOwnedLlmSecret(user.id, parsed.data.llmConfigId);
+    if (!llmConfig) return fail(404, "模型配置不存在，请先在设置中保存配置");
     const application = await getOwnedApplication(parsed.data.applicationId, user.id, request.signal);
     if (!application) return fail(404, "申请不存在");
     const content = await callLlm({
-      provider: byok.data.provider,
-      model: byok.data.model,
-      apiKey: byok.data.apiKey,
+      provider: llmConfig.provider,
+      model: llmConfig.model,
+      apiKey: llmConfig.apiKey,
       messages: [
         { role: "system", content: "你是软件著作权申报信息整理助手。" },
         { role: "user", content: [

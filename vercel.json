@@ -6,6 +6,10 @@
     "api/convert.py": {
       "maxDuration": 60,
       "includeFiles": "assets/**/*"
+    },
+    "src/app/api/generate/route.ts": {
+      "maxDuration": 300,
+      "includeFiles": "node_modules/@fontsource/noto-sans-sc/files/noto-sans-sc-chinese-simplified-400-normal.woff"
     }
   }
 }

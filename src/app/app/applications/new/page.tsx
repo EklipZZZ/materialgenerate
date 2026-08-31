@@ -51,11 +51,11 @@ export default function NewApplicationPage() {
             </div>
             <div className="form-side-card__item">
               <WandSparkles size={16} />
-              <div><strong>AI 可以辅助补全</strong><p>保存后进入编辑页，使用临时 API Key 生成建议。</p></div>
+              <div><strong>AI 可以辅助补全</strong><p>保存 AI 配置后可生成补全建议。</p></div>
             </div>
             <div className="form-side-card__item">
               <LockKeyhole size={16} />
-              <div><strong>数据按账户隔离</strong><p>申请只会展示给当前登录账户，Key 仅保存在当前 Tab。</p></div>
+              <div><strong>数据按账户隔离</strong><p>申请只会展示给当前登录账户，Key 使用服务端加密保存。</p></div>
             </div>
           </div>
         </Panel>

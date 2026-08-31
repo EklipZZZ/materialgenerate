@@ -12,7 +12,7 @@ const features = [
   { icon: FileCheck2, title: "按流程生成材料", description: "根据已保存的登记信息，生成源代码文档、用户手册和采集表。" },
   { icon: History, title: "生成记录可追溯", description: "每次生成都保留申请、模型和时间信息，方便后续查找。" },
   { icon: Download, title: "短时安全下载", description: "生成文件通过短时签名链接下载，减少长期暴露风险。" },
-  { icon: ShieldCheck, title: "账户数据隔离", description: "申请和生成记录按登录账户隔离，API Key 只保存在当前 Tab。" },
+  { icon: ShieldCheck, title: "账户数据隔离", description: "申请和生成记录按登录账户隔离，API Key 使用服务端加密保存。" },
 ];
 
 export default function HomePage() {
@@ -48,7 +48,7 @@ export default function HomePage() {
             <Button asChild size="lg"><Link href={user ? "/app" : "/register"}>{user ? "打开工作台" : "开始使用"}<ArrowRight size={16} /></Link></Button>
             <Button asChild size="lg" variant="outline"><Link href={user ? "/app/history" : "/login"}>{user ? "查看生成记录" : "已有账户，登录"}</Link></Button>
           </div>
-          <div className="marketing-hero__note"><LockKeyhole size={14} />不保存你的 API Key，所有生成由你配置的模型完成。</div>
+          <div className="marketing-hero__note"><LockKeyhole size={14} />API Key 由服务端加密保存，所有生成由你配置的模型完成。</div>
         </div>
 
         <div className="marketing-preview" aria-label="工作台界面预览">

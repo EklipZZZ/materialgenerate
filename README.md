@@ -13,14 +13,17 @@ Vercel
 Supabase
   ├─ Email Auth
   ├─ applications
+  ├─ copyright_holders
+  ├─ application_materials
+  ├─ generation_jobs / job_events
   ├─ generation_records
   └─ 私有 generated-documents Bucket
 
 OpenAI / DeepSeek
-  └─ 用户临时输入的 API Key
+  └─ 用户配置的 API Key（服务端 AES-256-GCM 加密）
 ```
 
-用户的 API Key 只保存在当前浏览器标签页，并在当前请求中转发给固定的 OpenAI 或 DeepSeek 端点。系统不保存 Key，不接受任意 Base URL。
+用户在设置页保存模型配置时，API Key 会立即在服务端使用 AES-256-GCM 加密写入 `llm_configs`。浏览器只保留配置 ID、服务商、模型和末四位；生成或 AI 补全时服务端按当前账户解密使用。系统不接受任意 Base URL。
 
 ## 本地开发
 
@@ -34,17 +37,20 @@ pnpm dev
 ## 构建与检查
 
 ```bash
+pnpm api:check
 pnpm test
 pnpm ts-check
 pnpm lint
 pnpm build
 ```
 
+开发文档入口见 [docs/README.md](./docs/README.md)。接口的人类可读说明见 [docs/api.md](./docs/api.md)，机器可读契约见 [docs/openapi.json](./docs/openapi.json)。接口 schema 统一维护在 `src/server/api-contracts.ts`，修改 API 后先运行 `pnpm api:generate` 更新 OpenAPI，再运行 `pnpm api:check`。
+
 Vercel 使用 Next.js 默认输出目录，不使用 `out`，也不使用 Dockerfile。
 
 ## Supabase
 
-按文件名顺序执行 `supabase/migrations/` 下的 3 个 SQL 文件，创建 Auth 用户关联的申请表、生成记录、索引和 RLS。Storage 中创建名为 `generated-documents` 的私有 Bucket。
+按文件名顺序执行 `supabase/migrations/` 下的 4 个 SQL 文件，创建 Auth 用户关联的申请、著作权人、材料、持久化任务、生成记录、索引和 RLS。Storage 中创建名为 `generated-documents` 的私有 Bucket。PDF 使用项目内的 Noto Sans SC 字体生成，不依赖 Docker 或 LibreOffice。
 
 ## 部署
 
@@ -55,5 +61,7 @@ Vercel 使用 Next.js 默认输出目录，不使用 `out`，也不使用 Docker
 - 所有 API 通过 Supabase Bearer Token 解析当前用户。
 - 服务端查询显式限制 `user_id`，不信任请求体中的用户 ID。
 - 生成文件只保存 Supabase Object Key，下载时生成 15 分钟临时链接。
+- 源代码、用户手册同时生成 DOCX/PDF；合作协议由用户上传，申请确认签章页由官方系统生成后上传。
+- `generation_jobs` 和 `job_events` 持久化任务状态，但生成仍是前台 SSE 请求，不承诺关闭网页后继续执行。
 - API Key、完整提示词和上游错误正文不写入日志。
 - 旧 Express 服务、平台专用 SDK、查询码和微信用户 ID 不参与构建。
