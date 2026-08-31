@@ -70,12 +70,13 @@ class handler(BaseHTTPRequestHandler):
                 if kind == "code":
                     code_convert_main(str(input_path), str(output_path), software_name, version)
                 else:
+                    cover_path = ASSET_ROOT / "template.docx"
                     manual_convert_main(
                         str(input_path),
                         str(output_path),
                         software_name,
                         version,
-                        str(ASSET_ROOT / "template.docx"),
+                        str(cover_path) if cover_path.exists() else None,
                     )
                 output = output_path.read_bytes()
 
