@@ -6,7 +6,8 @@ const A4_WIDTH = 595.28;
 const MARGIN = 56;
 const HEADER_Y = 28;
 const FOOTER_Y = 806;
-const CODE_CHUNK_CHARS = 120;
+const CODE_ASCII_CHUNK_CHARS = 94;
+const CODE_CJK_CHUNK_CHARS = 58;
 const BODY_CHUNK_CHARS = 240;
 
 type PdfRowKind = "body" | "heading" | "code" | "blank";
@@ -16,7 +17,15 @@ interface PdfRow {
   kind: PdfRowKind;
 }
 
+interface PdfCodeBlock {
+  font: "ascii" | "chinese";
+  lines: string[];
+}
+
+let cachedChineseFontPath: string | undefined;
+
 function chineseFontPath(): string {
+  if (cachedChineseFontPath) return cachedChineseFontPath;
   const fontFile = "noto-sans-sc-chinese-simplified-400-normal.woff";
   const fontPath = path.join(
     process.cwd(),
@@ -36,6 +45,7 @@ function chineseFontPath(): string {
   }
   const found = candidates.find((candidate) => existsSync(candidate));
   if (!found) throw new Error("中文字体资源未找到，请检查部署包中的 Noto Sans SC 字体");
+  cachedChineseFontPath = found;
   return found;
 }
 
@@ -70,7 +80,7 @@ function splitForPdf(value: string, maxChars: number): string[] {
 }
 
 function addTextRows(rows: PdfRow[], text: string, kind: Exclude<PdfRowKind, "blank">): void {
-  const maxChars = kind === "code" ? CODE_CHUNK_CHARS : BODY_CHUNK_CHARS;
+  const maxChars = kind === "code" ? CODE_ASCII_CHUNK_CHARS : BODY_CHUNK_CHARS;
   for (const chunk of splitForPdf(text, maxChars)) {
     rows.push({ text: chunk || " ", kind });
   }
@@ -127,11 +137,20 @@ function addPageChrome(document: PDFKit.PDFDocument, pageNumber: number, title: 
   document.y = MARGIN + 14;
 }
 
-function codePdfLines(markdown: string): string[] {
-  return markdown
-    .replace(/\r\n/g, "\n")
-    .split("\n")
-    .flatMap((line) => splitForPdf(line || " ", CODE_CHUNK_CHARS));
+function codePdfBlocks(markdown: string): PdfCodeBlock[] {
+  const blocks: PdfCodeBlock[] = [];
+  for (const line of markdown.replace(/\r\n/g, "\n").split("\n")) {
+    const font = /[\u3400-\u9fff]/.test(line) ? "chinese" : "ascii";
+    const maxChars = font === "chinese" ? CODE_CJK_CHUNK_CHARS : CODE_ASCII_CHUNK_CHARS;
+    const chunks = splitForPdf(line || " ", maxChars);
+    const last = blocks[blocks.length - 1];
+    if (last?.font === font && last.lines.length + chunks.length <= 200) {
+      last.lines.push(...chunks);
+    } else {
+      blocks.push({ font, lines: chunks });
+    }
+  }
+  return blocks;
 }
 
 export interface PdfRenderResult {
@@ -193,15 +212,15 @@ export async function renderMarkdownPdf(
 
   const sourceLineCount = markdown.replace(/\r\n/g, "\n").split("\n").length;
   if (kind === "code") {
-    // PDFKit spends a disproportionate amount of time when every source line
-    // is submitted as a separate text operation. Render bounded blocks instead
-    // so long source archives fit within Vercel's Serverless Function limit.
-    const lines = codePdfLines(markdown);
-    const codeFont = /[\u3400-\u9fff]/.test(markdown) ? fontPath : "Courier";
-    document.font(codeFont).fontSize(8.2).fillColor("#344054");
-    for (let start = 0; start < lines.length; start += 200) {
+    // Keep ordinary source text on the fast built-in Courier font. Only lines
+    // that actually contain Chinese use the embedded font; selecting the CJK
+    // font for a whole mixed-language archive makes PDFKit's font shaping
+    // needlessly slow and can exceed Vercel's function limit.
+    const blocks = codePdfBlocks(markdown);
+    for (const block of blocks) {
       throwIfAborted(signal);
-      document.text(lines.slice(start, start + 200).join("\n"), {
+      document.font(block.font === "chinese" ? fontPath : "Courier").fontSize(8.2).fillColor("#344054");
+      document.text(block.lines.join("\n"), {
         lineGap: 1,
         width: A4_WIDTH - MARGIN * 2,
       });
