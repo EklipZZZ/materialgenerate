@@ -91,7 +91,9 @@ pnpm build
 
 （5）SSE 中断后，可以通过任务接口读取已经持久化的状态和事件；
 
-（6）生成记录、材料记录和任务记录可以通过关联 ID 对应。
+（6）超过 `GENERATION_JOB_STALE_MS` 未更新的遗留任务会在下一次重试时自动回收，不会永久阻塞同一申请；
+
+（7）生成记录、材料记录和任务记录可以通过关联 ID 对应。
 
 ### PDF
 
@@ -127,7 +129,7 @@ pnpm build
 
 （2）确认 `generated-documents` 是私有 Bucket；
 
-（3）配置 Supabase、转换服务、LLM 加密根密钥和超时环境变量；
+（3）配置 Supabase、转换服务、LLM 加密根密钥、超时和任务过期回收环境变量；
 
 （4）执行 `pnpm test`、`pnpm ts-check`、`pnpm lint` 和 `pnpm build`；
 

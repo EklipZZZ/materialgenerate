@@ -1,5 +1,5 @@
 import { ApiError } from "./http";
-import { getSupabaseAdmin } from "./config";
+import { getServerEnv, getSupabaseAdmin } from "./config";
 import type { Provider } from "./models";
 
 export type GenerationJobStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
@@ -20,32 +20,71 @@ export interface GenerationJobRow {
   updated_at: string;
 }
 
+const staleJobMessage = "上一次生成请求已中断，任务已自动标记为失败，可以重新生成";
+
+async function recoverStaleGenerationJob(input: { userId: string; applicationId: string }): Promise<boolean> {
+  const staleMs = Math.max(60_000, getServerEnv().generationJobStaleMs);
+  const staleBefore = new Date(Date.now() - staleMs).toISOString();
+  const now = new Date().toISOString();
+  const result = await getSupabaseAdmin()
+    .from("generation_jobs")
+    .update({
+      status: "failed",
+      error_message: staleJobMessage,
+      completed_at: now,
+      updated_at: now,
+    })
+    .eq("application_id", input.applicationId)
+    .eq("user_id", input.userId)
+    .in("status", ["queued", "running"])
+    .lt("updated_at", staleBefore)
+    .select("id,user_id,current_step,progress");
+
+  if (result.error) throw new Error("stale generation job recovery failed");
+  const recovered = result.data || [];
+  if (!recovered.length) return false;
+
+  await getSupabaseAdmin().from("job_events").insert(recovered.map((job) => ({
+    job_id: job.id,
+    user_id: job.user_id,
+    step: job.current_step,
+    message: "检测到上一次请求已中断，已自动释放生成任务锁。",
+    progress: job.progress,
+    metadata: { failure_kind: "stale_job_recovered", retryable: true },
+  })));
+  // Releasing the lock is more important than the optional diagnostic event.
+  return true;
+}
+
 export async function createGenerationJob(input: {
   userId: string;
   applicationId: string;
   provider: Provider;
   model: string;
 }): Promise<GenerationJobRow> {
-  const result = await getSupabaseAdmin()
-    .from("generation_jobs")
-    .insert({
-      user_id: input.userId,
-      application_id: input.applicationId,
-      status: "queued",
-      current_step: "queued",
-      progress: 0,
-      provider: input.provider,
-      model: input.model,
-    })
-    .select("*")
-    .single();
-  if (result.error) {
-    if (result.error.code === "23505") {
-      throw new ApiError(409, "同一申请已有生成任务正在进行，请等待完成");
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const result = await getSupabaseAdmin()
+      .from("generation_jobs")
+      .insert({
+        user_id: input.userId,
+        application_id: input.applicationId,
+        status: "queued",
+        current_step: "queued",
+        progress: 0,
+        provider: input.provider,
+        model: input.model,
+      })
+      .select("*")
+      .single();
+    if (!result.error) return result.data as GenerationJobRow;
+    if (result.error.code !== "23505" || attempt > 0 || !(await recoverStaleGenerationJob(input))) {
+      if (result.error.code === "23505") {
+        throw new ApiError(409, "同一申请已有生成任务正在进行，请等待完成");
+      }
+      throw new Error("generation job creation failed");
     }
-    throw new Error("generation job creation failed");
   }
-  return result.data as GenerationJobRow;
+  throw new Error("generation job creation failed");
 }
 
 export async function updateGenerationJob(

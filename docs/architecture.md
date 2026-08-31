@@ -106,6 +106,8 @@ POST /api/generate
 
 发生异常时，任务进入 `failed` 或 `cancelled`，记录失败阶段，删除本次生成的临时对象，并将申请恢复到可重试状态。
 
+如果 Vercel 请求在来不及执行清理逻辑时被中断，下一次创建任务会检查同一申请的 `queued/running` 任务。只有超过 `GENERATION_JOB_STALE_MS`（默认 30 分钟）未更新的任务才会被标记为 `failed` 并释放任务锁，正常运行中的任务仍然返回冲突提示。
+
 ## 文档生成
 
 LLM 负责产生规范化 Markdown 内容。DOCX 和 PDF 从同一份内容生成，避免两个格式的正文分叉：
