@@ -2739,13 +2739,92 @@
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "draft": {
+            "$ref": "#/components/schemas/EnrichDraft"
+          },
+          "regenerateMainFunctions": {
+            "default": false,
+            "type": "boolean"
           }
         },
         "required": [
           "applicationId",
           "llmConfigId"
         ],
-        "description": "使用已保存的模型配置补全申请信息。"
+        "description": "使用已保存的模型配置补全申请信息；可携带当前页面草稿，并明确要求重写软件主要功能。"
+      },
+      "EnrichDraft": {
+        "type": "object",
+        "properties": {
+          "software_full_name": {
+            "type": "string",
+            "maxLength": 300
+          },
+          "software_short_name": {
+            "type": "string",
+            "maxLength": 300
+          },
+          "version": {
+            "type": "string",
+            "maxLength": 300
+          },
+          "software_category": {
+            "type": "string",
+            "maxLength": 50
+          },
+          "development_hardware": {
+            "type": "string",
+            "maxLength": 50
+          },
+          "runtime_hardware": {
+            "type": "string",
+            "maxLength": 50
+          },
+          "development_os": {
+            "type": "string",
+            "maxLength": 50
+          },
+          "development_tools": {
+            "type": "string",
+            "maxLength": 50
+          },
+          "runtime_platform": {
+            "type": "string",
+            "maxLength": 50
+          },
+          "runtime_environment": {
+            "type": "string",
+            "maxLength": 50
+          },
+          "programming_language": {
+            "type": "string",
+            "maxLength": 50
+          },
+          "source_code_lines": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000000
+          },
+          "development_purpose": {
+            "type": "string",
+            "maxLength": 50
+          },
+          "target_industry": {
+            "type": "string",
+            "maxLength": 50
+          },
+          "main_functions": {
+            "type": "string",
+            "maxLength": 1300
+          },
+          "technical_features": {
+            "type": "string",
+            "maxLength": 100
+          }
+        },
+        "additionalProperties": false,
+        "description": "当前页面尚未保存的技术字段草稿；不包含著作权人、证件、权利和联系方式。"
       },
       "GenerateRequest": {
         "type": "object",

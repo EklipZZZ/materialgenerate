@@ -22,6 +22,8 @@ import {
   PROGRAMMING_LANGUAGE_OPTIONS,
   SOFTWARE_CATEGORY_OPTIONS,
   TARGET_INDUSTRY_OPTIONS,
+  parseChoiceSelection,
+  serializeChoiceSelection,
 } from "@/lib/copyright-options";
 
 interface Props {
@@ -45,9 +47,7 @@ const developmentMethodLabels = {
   cooperative: "合作开发",
 } as const;
 
-const CUSTOM_OPTION = "__custom__";
-
-interface ChoiceOrCustomFieldProps {
+interface MultiChoiceFieldProps {
   id: string;
   label: string;
   value: string;
@@ -57,43 +57,75 @@ interface ChoiceOrCustomFieldProps {
   maxLength?: number;
 }
 
-function ChoiceOrCustomField({ id, label, value, options, onChange, disabled, maxLength }: ChoiceOrCustomFieldProps) {
-  const [customMode, setCustomMode] = useState(() => Boolean(value && !options.includes(value)));
-  const showingCustom = !options.includes(value) && (customMode || Boolean(value));
+function MultiChoiceField({ id, label, value, options, onChange, disabled, maxLength }: MultiChoiceFieldProps) {
+  const { selected: selectedOptions, custom: customValue } = parseChoiceSelection(value, options);
+  const [limitErrorValue, setLimitErrorValue] = useState<string | null>(null);
+  const choiceError = limitErrorValue === value
+    ? `${label}合计不能超过 ${maxLength} 字符`
+    : null;
+
+  const selectedValue = serializeChoiceSelection(selectedOptions, "");
+  const combinedValue = serializeChoiceSelection(selectedOptions, customValue);
+  const customMaxLength = maxLength === undefined
+    ? undefined
+    : Math.max(0, maxLength - characterCount(selectedValue) - (selectedOptions.length ? 1 : 0));
+
+  const emit = (nextSelected: readonly string[], nextCustom: string): boolean => {
+    const nextValue = serializeChoiceSelection(nextSelected, nextCustom);
+    if (maxLength !== undefined && characterCount(nextValue) > maxLength) {
+      setLimitErrorValue(value);
+      return false;
+    }
+    setLimitErrorValue(null);
+    onChange(nextValue);
+    return true;
+  };
+
+  const toggleOption = (option: string) => {
+    const nextSelected = selectedOptions.includes(option)
+      ? selectedOptions.filter((item) => item !== option)
+      : [...selectedOptions, option];
+    emit(nextSelected, customValue);
+  };
+
+  const updateCustom = (nextValue: string) => {
+    const boundedValue = customMaxLength === undefined
+      ? nextValue
+      : Array.from(nextValue).slice(0, customMaxLength).join("");
+    emit(selectedOptions, boundedValue);
+  };
 
   return (
     <div className="form-field">
-      <label className="form-label" htmlFor={id}>{label}</label>
-      <select
-        id={id}
-        className="app-select"
-        value={showingCustom ? CUSTOM_OPTION : value}
-        onChange={(event) => {
-          if (event.target.value === CUSTOM_OPTION) {
-            setCustomMode(true);
-            onChange("");
-          } else {
-            setCustomMode(false);
-            onChange(event.target.value);
-          }
-        }}
-        disabled={disabled}
-      >
-        <option value="">请选择</option>
-        {options.map((option) => <option value={option} key={option}>{option}</option>)}
-        <option value={CUSTOM_OPTION}>自定义填写</option>
-      </select>
-      {showingCustom && (
+      <span className="form-label" id={`${id}-label`}>{label}（可多选）</span>
+      <div className="form-choice-list" id={id} role="group" aria-labelledby={`${id}-label`}>
+        {options.map((option, index) => (
+          <label className={`form-choice-option ${selectedOptions.includes(option) ? "form-choice-option--selected" : ""}`} htmlFor={`${id}-${index}`} key={option}>
+            <input
+              id={`${id}-${index}`}
+              type="checkbox"
+              checked={selectedOptions.includes(option)}
+              onChange={() => toggleOption(option)}
+              disabled={disabled}
+            />
+            <span>{option}</span>
+          </label>
+        ))}
+      </div>
+      <label className="form-choice-custom" htmlFor={`${id}-custom`}>
+        <span className="form-hint">自定义补充</span>
         <Input
-          className="form-field__custom-input"
-          aria-label={`${label}自定义内容`}
-          value={value}
-          maxLength={maxLength}
-          placeholder={`填写${label}`}
-          onChange={(event) => onChange(event.target.value)}
+          id={`${id}-custom`}
+          value={customValue}
+          maxLength={customMaxLength}
+          placeholder={`可补充其他${label}`}
+          onChange={(event) => updateCustom(event.target.value)}
           disabled={disabled}
         />
-      )}
+      </label>
+      <span className={choiceError ? "form-hint form-hint--error" : "form-hint"}>
+        {choiceError || `已填写 ${characterCount(combinedValue)}${maxLength === undefined ? "" : ` / ${maxLength}`} 字符；可同时选择多个预设项并补充自定义内容`}
+      </span>
     </div>
   );
 }
@@ -164,7 +196,7 @@ export function CopyrightFormEditor({ form, onChange, disabled }: Props) {
           {input("software_full_name", "软件全称")}
           {input("software_short_name", "软件简称")}
           {input("version", "版本号")}
-          <ChoiceOrCustomField
+          <MultiChoiceField
             id="software_category"
             label="软件分类"
             value={form.software_category}
@@ -339,7 +371,7 @@ export function CopyrightFormEditor({ form, onChange, disabled }: Props) {
           {input("runtime_platform", "运行平台操作系统", "text", undefined, COPYRIGHT_SHORT_TEXT_MAX)}
           {input("development_tools", "软件开发环境工具", "text", undefined, COPYRIGHT_SHORT_TEXT_MAX)}
           {input("runtime_environment", "软件运行支撑环境", "text", undefined, COPYRIGHT_SHORT_TEXT_MAX)}
-          <ChoiceOrCustomField
+          <MultiChoiceField
             id="programming_language"
             label="编程语言"
             value={form.programming_language}
@@ -359,7 +391,7 @@ export function CopyrightFormEditor({ form, onChange, disabled }: Props) {
         </div>
         <div className="form-grid">
           {input("development_purpose", "开发目的", "text", undefined, COPYRIGHT_SHORT_TEXT_MAX)}
-          <ChoiceOrCustomField
+          <MultiChoiceField
             id="target_industry"
             label="面向领域 / 行业"
             value={form.target_industry}
@@ -372,7 +404,7 @@ export function CopyrightFormEditor({ form, onChange, disabled }: Props) {
             <label className="form-label" htmlFor="main_functions">软件的主要功能</label>
             <Textarea id="main_functions" className="min-h-36" maxLength={COPYRIGHT_MAIN_FUNCTIONS_MAX} value={form.main_functions} onChange={(event) => set("main_functions", event.target.value)} disabled={disabled} placeholder="请完整描述软件解决的问题、主要模块、关键功能和用户操作流程。" />
             <span className={characterCount(form.main_functions) > 0 && (characterCount(form.main_functions) < COPYRIGHT_MAIN_FUNCTIONS_MIN || characterCount(form.main_functions) > COPYRIGHT_MAIN_FUNCTIONS_MAX) ? "form-hint form-hint--error" : "form-hint"}>
-              当前 {characterCount(form.main_functions)} / {COPYRIGHT_MAIN_FUNCTIONS_MIN}～{COPYRIGHT_MAIN_FUNCTIONS_MAX} 字符
+              当前 {characterCount(form.main_functions)} / {COPYRIGHT_MAIN_FUNCTIONS_MIN}～{COPYRIGHT_MAIN_FUNCTIONS_MAX} 字符；草稿可暂存，生成材料前需达到范围
             </span>
           </div>
           <div className="form-field form-field--full">

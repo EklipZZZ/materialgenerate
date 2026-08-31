@@ -28,7 +28,7 @@ import { apiEndpoint } from "@/lib/api-base";
 import { getApplicationProgress, getApplicationStatus } from "@/lib/application-progress";
 import { type ByokConfig } from "@/lib/byok";
 import { authorizedFetch } from "@/lib/auth";
-import { recordToFormData, type CopyrightFormData, validateCopyrightForm } from "@/lib/copyright-form";
+import { formToEnrichmentDraft, recordToFormData, type CopyrightFormData, validateCopyrightForm } from "@/lib/copyright-form";
 import { loadPersistedByok } from "@/lib/llm-config-client";
 import {
   deleteApplication,
@@ -101,7 +101,7 @@ export default function ApplicationEditPage() {
   }
 
   async function enrich() {
-    if (!id) return;
+    if (!id || !form) return;
     if (!byok?.id) {
       setError("请先在设置中保存 AI 模型配置");
       return;
@@ -113,7 +113,12 @@ export default function ApplicationEditPage() {
       const response = await authorizedFetch(apiEndpoint("/api/enrich"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ applicationId: id, llmConfigId: byok.id }),
+        body: JSON.stringify({
+          applicationId: id,
+          llmConfigId: byok.id,
+          draft: formToEnrichmentDraft(form),
+          regenerateMainFunctions: true,
+        }),
       });
       const body = await response.json().catch(() => ({})) as { data?: Record<string, unknown>; msg?: string };
       if (!response.ok || !body.data) throw new Error(body.msg || "AI 补全失败");
@@ -204,7 +209,7 @@ export default function ApplicationEditPage() {
               <div className="form-actions form-actions--sticky">
                 <Button type="button" variant="outline" onClick={() => void enrich()} disabled={busy}>
                   {enriching ? <LoaderCircle className="app-spin" size={15} /> : <Sparkles size={15} />}
-                  {enriching ? "AI 补全中…" : "AI 补全建议"}
+                  {enriching ? "AI 生成中…" : "AI 补全并生成主要功能"}
                 </Button>
                 <Button type="button" onClick={() => void save()} disabled={busy}>
                   {saving ? <LoaderCircle className="app-spin" size={15} /> : <Save size={15} />}

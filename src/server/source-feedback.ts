@@ -97,7 +97,10 @@ function isValidSuggestion(field: SourceFeedbackField, value: string): boolean {
   const trimmed = value.trim();
   if (!trimmed || characterCount(trimmed) > sourceFeedbackFieldMaxLengths[field]) return false;
   if (field === "source_code_lines") return /^\d+$/.test(trimmed);
-  return validateCopyrightTextFields({ [field]: trimmed }).length === 0;
+  return validateCopyrightTextFields(
+    { [field]: trimmed },
+    { requireMainFunctions: field === "main_functions" },
+  ).length === 0;
 }
 
 function toSuggestion(

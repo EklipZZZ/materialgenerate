@@ -34,3 +34,30 @@ export const PROGRAMMING_LANGUAGE_OPTIONS = [
   "Swift / Kotlin",
   "HTML / CSS",
 ] as const;
+
+export interface ChoiceSelection {
+  selected: string[];
+  custom: string;
+}
+
+/**
+ * Older records store these fields as one string. Split known options from
+ * the remaining user-entered text so the multi-select UI can edit both
+ * representations without a database migration.
+ */
+export function parseChoiceSelection(value: string, options: readonly string[]): ChoiceSelection {
+  const parts = value
+    .split(/[、,，;；]/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const selected = options.filter((option) => parts.includes(option));
+  const custom = parts.filter((part) => !options.includes(part)).join("、");
+  return { selected, custom };
+}
+
+export function serializeChoiceSelection(selected: readonly string[], custom: string): string {
+  return Array.from(new Set([
+    ...selected,
+    ...custom.split(/[、,，;；]/).map((part) => part.trim()).filter(Boolean),
+  ])).join("、");
+}

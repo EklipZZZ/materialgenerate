@@ -64,7 +64,7 @@ export function validateCopyrightTextFields(
     if (typeof value !== "string" || !value.trim()) continue;
     const count = characterCount(value.trim());
     if (field === "main_functions") {
-      if (count < COPYRIGHT_MAIN_FUNCTIONS_MIN || count > COPYRIGHT_MAIN_FUNCTIONS_MAX) {
+      if (count > COPYRIGHT_MAIN_FUNCTIONS_MAX) {
         errors.push(`${labels[field]}需填写 ${COPYRIGHT_MAIN_FUNCTIONS_MIN}～${COPYRIGHT_MAIN_FUNCTIONS_MAX} 字符，当前 ${count} 字符`);
       }
       continue;

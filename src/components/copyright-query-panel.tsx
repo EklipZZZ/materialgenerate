@@ -8,7 +8,7 @@ import { CopyrightFormEditor } from "@/components/copyright-form-editor";
 import { apiEndpoint } from "@/lib/api-base";
 import { authorizedFetch } from "@/lib/auth";
 import type { ByokConfig } from "@/lib/byok";
-import { formToMarkdown, recordToFormData, type CopyrightFormData, validateCopyrightForm } from "@/lib/copyright-form";
+import { formToEnrichmentDraft, formToMarkdown, recordToFormData, type CopyrightFormData, validateCopyrightForm } from "@/lib/copyright-form";
 import { deleteApplication, listApplications, updateApplication, type ApplicationRecord } from "@/lib/softreg-api";
 
 export interface QueryPanelGeneratePayload {
@@ -79,7 +79,7 @@ export function CopyrightQueryPanel({ disabled, refreshToken, byok, onReadyToGen
   }
 
   async function enrich() {
-    if (!selected?.id) return;
+    if (!selected?.id || !selectedForm) return;
     if (!byok?.id) {
       setError("请先保存 AI 模型配置");
       return;
@@ -90,7 +90,12 @@ export function CopyrightQueryPanel({ disabled, refreshToken, byok, onReadyToGen
       const response = await authorizedFetch(apiEndpoint("/api/enrich"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ applicationId: selected.id, llmConfigId: byok.id }),
+        body: JSON.stringify({
+          applicationId: selected.id,
+          llmConfigId: byok.id,
+          draft: formToEnrichmentDraft(selectedForm),
+          regenerateMainFunctions: true,
+        }),
       });
       const body = await response.json().catch(() => ({})) as { data?: Record<string, unknown>; msg?: string };
       if (!response.ok || !body.data) throw new Error(body.msg || "AI 补全失败");
@@ -140,7 +145,7 @@ export function CopyrightQueryPanel({ disabled, refreshToken, byok, onReadyToGen
           {selected && selectedForm && <>
             <CopyrightFormEditor form={selectedForm} onChange={(next) => setSelected({ ...selected, ...next })} disabled={disabled || working} />
             <div className="form-actions">
-              <Button type="button" variant="outline" onClick={() => void enrich()} disabled={disabled || working}><Sparkles size={15} />AI 补全建议</Button>
+              <Button type="button" variant="outline" onClick={() => void enrich()} disabled={disabled || working}><Sparkles size={15} />AI 补全并生成主要功能</Button>
               <Button type="button" variant="ghost" onClick={() => void remove()} disabled={disabled || working}><Trash2 size={15} />删除</Button>
               <Button type="button" onClick={() => void save()} disabled={disabled || working}>{working ? <LoaderCircle className="app-spin" size={15} /> : <Save size={15} />}保存修改</Button>
               <Button type="button" variant="secondary" onClick={() => onReadyToGenerate({ tableTemplate: formToMarkdown(selectedForm), fileName: selectedForm.software_short_name || selectedForm.software_full_name || "software-copyright", formId: selected.id, skipAnalyze: true })} disabled={disabled || working}><ArrowRight size={15} />准备生成</Button>

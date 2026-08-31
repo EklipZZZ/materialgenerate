@@ -362,6 +362,33 @@ export function formToUpdatePayload(form: CopyrightFormData) {
   };
 }
 
+/**
+ * Send the current unsaved technical draft to AI enrichment. Sensitive
+ * identity, rights, applicant, and contact fields intentionally stay out of
+ * this payload. Empty values are included so a user-cleared field cannot be
+ * replaced by an older value that is still stored on the server.
+ */
+export function formToEnrichmentDraft(form: CopyrightFormData): Record<string, unknown> {
+  return {
+    software_full_name: form.software_full_name,
+    software_short_name: form.software_short_name,
+    version: form.version,
+    software_category: form.software_category,
+    development_hardware: form.development_hardware,
+    runtime_hardware: form.runtime_hardware,
+    development_os: form.development_os,
+    development_tools: form.development_tools,
+    runtime_platform: form.runtime_platform,
+    runtime_environment: form.runtime_environment,
+    programming_language: form.programming_language,
+    source_code_lines: form.source_code_lines,
+    development_purpose: form.development_purpose,
+    target_industry: form.target_industry,
+    main_functions: form.main_functions,
+    technical_features: form.technical_features,
+  };
+}
+
 export function validateCopyrightForm(form: CopyrightFormData, requireMainFunctions = false): string[] {
   return validateCopyrightTextFields(form as unknown as Record<string, unknown>, { requireMainFunctions });
 }

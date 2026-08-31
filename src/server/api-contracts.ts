@@ -2,7 +2,6 @@ import { z } from "zod";
 import { llmConfigInputSchema } from "./models.ts";
 import {
   COPYRIGHT_MAIN_FUNCTIONS_MAX,
-  COPYRIGHT_MAIN_FUNCTIONS_MIN,
   COPYRIGHT_SHORT_TEXT_MAX,
   COPYRIGHT_TECHNICAL_FEATURES_MAX,
 } from "../lib/copyright-constraints.ts";
@@ -13,10 +12,9 @@ const longText = z.string().trim().max(20_000);
 const dateText = z.string().trim().max(40);
 const registrationShortText = z.string().trim().max(COPYRIGHT_SHORT_TEXT_MAX);
 const technicalFeaturesText = z.string().trim().max(COPYRIGHT_TECHNICAL_FEATURES_MAX);
-const mainFunctionsText = z.string().trim().max(COPYRIGHT_MAIN_FUNCTIONS_MAX).refine(
-  (value) => value.length === 0 || Array.from(value).length >= COPYRIGHT_MAIN_FUNCTIONS_MIN,
-  `软件的主要功能需填写 ${COPYRIGHT_MAIN_FUNCTIONS_MIN}～${COPYRIGHT_MAIN_FUNCTIONS_MAX} 字符`,
-);
+// Drafts may be blank or shorter than the official minimum. The final
+// generation endpoint applies the required 500-character gate separately.
+const mainFunctionsText = z.string().trim().max(COPYRIGHT_MAIN_FUNCTIONS_MAX);
 
 export const applicationIdSchema = z.string().uuid();
 export const materialIdSchema = z.string().uuid();
@@ -102,6 +100,28 @@ export const applicationPayloadFields = applicationFields.extend({
   description: "创建或更新申请时使用的请求体。",
 });
 
+const enrichDraftFields = applicationFields.pick({
+  software_full_name: true,
+  software_short_name: true,
+  version: true,
+  software_category: true,
+  development_hardware: true,
+  runtime_hardware: true,
+  development_os: true,
+  development_tools: true,
+  runtime_platform: true,
+  runtime_environment: true,
+  programming_language: true,
+  source_code_lines: true,
+  development_purpose: true,
+  target_industry: true,
+  main_functions: true,
+  technical_features: true,
+}).partial().meta({
+  id: "EnrichDraft",
+  description: "当前页面尚未保存的技术字段草稿；不包含著作权人、证件、权利和联系方式。",
+});
+
 export const sourceUploadSchema = z.object({
   fileName: z.string().trim().min(1).max(200),
   contentType: z.string().trim().max(120).optional(),
@@ -146,9 +166,11 @@ export const sourceFeedbackResponseSchema = z.object({
 export const enrichRequestSchema = z.object({
   applicationId: applicationIdSchema,
   llmConfigId: llmConfigIdSchema,
+  draft: enrichDraftFields.optional(),
+  regenerateMainFunctions: z.boolean().optional().default(false),
 }).meta({
   id: "EnrichRequest",
-  description: "使用已保存的模型配置补全申请信息。",
+  description: "使用已保存的模型配置补全申请信息；可携带当前页面草稿，并明确要求重写软件主要功能。",
 });
 
 export const generateRequestSchema = z.object({

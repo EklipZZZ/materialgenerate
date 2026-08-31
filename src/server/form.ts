@@ -59,6 +59,7 @@ export const aiEnrichmentFields = [
 const aiContextFields = [
   "software_full_name",
   "version",
+  "source_code_lines",
   ...aiEnrichmentFields,
 ] as const;
 
@@ -214,9 +215,12 @@ export function parseEnrichedMarkdown(markdown: string, base: Record<string, unk
     ["主要功能", "main_functions"],
     ["技术特点", "technical_features"],
   ].map(([key, label]) => [label, key]));
-  const rowRegex = /\|\s*\*\*(.+?)\*\*\s*\|\s*(.*?)\s*\|/g;
-  let match: RegExpExecArray | null;
-  while ((match = rowRegex.exec(markdown)) !== null) {
+  // Split only at the beginning of another table row so a long main
+  // functions value may contain line breaks without being truncated.
+  const rows = markdown.split(/\r?\n(?=\s*\|\s*\*\*)/g);
+  for (const row of rows) {
+    const match = row.match(/^\s*\|\s*\*\*(.+?)\*\*\s*\|\s*([\s\S]*?)\s*\|\s*$/);
+    if (!match) continue;
     const key = labelToKey[match[1].trim()];
     if (!key || !match[2].trim()) continue;
     if (key === "is_published") result[key] = match[2].trim() === "已发表";
@@ -236,14 +240,23 @@ function isUsableAiValue(value: unknown): value is string {
   return Boolean(normalized) && !["未填写", "未提供", "暂无", "未知", "无"].includes(normalized);
 }
 
-export function mergeEnrichment(base: Record<string, unknown>, candidate: Record<string, unknown>) {
+export function mergeEnrichment(
+  base: Record<string, unknown>,
+  candidate: Record<string, unknown>,
+  options: { replaceFields?: readonly string[] } = {},
+) {
   const result = { ...base };
+  const replaceFields = new Set(options.replaceFields || []);
   for (const field of aiEnrichmentFields) {
     const current = base[field];
     const proposed = candidate[field];
-    if (isUsableAiValue(current) || !isUsableAiValue(proposed)) continue;
+    if (!isUsableAiValue(proposed)) continue;
+    if (!replaceFields.has(field) && isUsableAiValue(current)) continue;
     if (field === "software_short_name" && characterCount(proposed.trim()) > 300) continue;
-    if (validateCopyrightTextFields({ [field]: proposed }).length > 0) continue;
+    if (validateCopyrightTextFields(
+      { [field]: proposed },
+      { requireMainFunctions: field === "main_functions" },
+    ).length > 0) continue;
     result[field] = proposed.trim();
   }
   return result;
