@@ -40,7 +40,12 @@ export async function POST(request: NextRequest) {
         "X-PDF-Text-Length": String(result.textLength),
       },
     });
-  } catch {
+  } catch (error) {
+    const normalized = error instanceof Error ? error : new Error(String(error));
+    console.error("[api/pdf] render failed", {
+      name: normalized.name,
+      message: normalized.message,
+    });
     return Response.json({ code: 500, msg: "PDF 渲染失败", data: null }, { status: 500 });
   }
 }

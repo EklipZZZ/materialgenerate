@@ -1,5 +1,5 @@
 import PDFDocument from "pdfkit";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 
 const A4_WIDTH = 595.28;
@@ -17,16 +17,26 @@ interface PdfRow {
 }
 
 function chineseFontPath(): string {
+  const fontFile = "noto-sans-sc-chinese-simplified-400-normal.woff";
   const fontPath = path.join(
     process.cwd(),
     "node_modules",
     "@fontsource",
     "noto-sans-sc",
     "files",
-    "noto-sans-sc-chinese-simplified-400-normal.woff",
+    fontFile,
   );
-  if (!existsSync(fontPath)) throw new Error("中文字体资源未找到，请检查部署包中的 Noto Sans SC 字体");
-  return fontPath;
+  const candidates = [fontPath];
+  const pnpmRoot = path.join(process.cwd(), "node_modules", ".pnpm");
+  if (existsSync(pnpmRoot)) {
+    for (const entry of readdirSync(pnpmRoot)) {
+      if (!entry.startsWith("@fontsource+noto-sans-sc@")) continue;
+      candidates.push(path.join(pnpmRoot, entry, "node_modules", "@fontsource", "noto-sans-sc", "files", fontFile));
+    }
+  }
+  const found = candidates.find((candidate) => existsSync(candidate));
+  if (!found) throw new Error("中文字体资源未找到，请检查部署包中的 Noto Sans SC 字体");
+  return found;
 }
 
 function cleanInlineMarkdown(value: string): string {
