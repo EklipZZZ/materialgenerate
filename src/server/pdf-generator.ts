@@ -106,6 +106,29 @@ function chineseSubsetPath(codePoint: number): string | undefined {
   return chineseFontSubsets().find((subset) => subset.ranges.some(([start, end]) => codePoint >= start && codePoint <= end))?.path;
 }
 
+function richTextRuns(value: string): PdfTextRun[] {
+  let fallbackFontPath: string | undefined;
+  const runs: PdfTextRun[] = [];
+  for (const character of [...value]) {
+    const codePoint = character.codePointAt(0) || 0;
+    const isAscii = codePoint <= 0x7f;
+    let font = isAscii ? "Helvetica" : chineseSubsetPath(codePoint);
+    if (!font) {
+      fallbackFontPath ||= chineseFontPath();
+      font = fallbackFontPath;
+    }
+    const width = isAscii ? 5.2 : 10.2;
+    const previous = runs[runs.length - 1];
+    if (previous?.font === font) {
+      previous.text += character;
+      previous.width += width;
+    } else {
+      runs.push({ font, text: character, width });
+    }
+  }
+  return runs.length ? runs : [{ font: "Helvetica", text: " ", width: 5.2 }];
+}
+
 function codeTextRuns(value: string, fallbackFontPath: string): PdfTextRun[] {
   const runs: PdfTextRun[] = [];
   for (const character of [...value]) {
@@ -122,6 +145,29 @@ function codeTextRuns(value: string, fallbackFontPath: string): PdfTextRun[] {
     }
   }
   return runs.length ? runs : [{ font: "Courier", text: " ", width: 8.2 * 0.6 }];
+}
+
+function writeRichText(
+  document: PDFKit.PDFDocument,
+  value: string,
+  options: {
+    fontSize: number;
+    color: string;
+    width: number;
+    align?: "left" | "center" | "right";
+    lineGap?: number;
+  },
+): void {
+  const runs = richTextRuns(value);
+  runs.forEach((run, index) => {
+    document.font(run.font).fontSize(options.fontSize).fillColor(options.color);
+    document.text(run.text, {
+      width: options.width,
+      align: options.align,
+      lineGap: options.lineGap,
+      continued: index < runs.length - 1,
+    });
+  });
 }
 
 function cleanInlineMarkdown(value: string): string {
@@ -204,9 +250,22 @@ function markdownRows(markdown: string, forceCode = false): PdfRow[] {
 
 function addPageChrome(document: PDFKit.PDFDocument, pageNumber: number, title: string): void {
   document.save();
-  document.font(chineseFontPath()).fontSize(8).fillColor("#667085");
-  document.text(`${title}`, MARGIN, HEADER_Y, { width: A4_WIDTH - MARGIN * 2, align: "left" });
-  document.text(`第 ${pageNumber} 页`, MARGIN, FOOTER_Y, { width: A4_WIDTH - MARGIN * 2, align: "right" });
+  document.x = MARGIN;
+  document.y = HEADER_Y;
+  writeRichText(document, title, {
+    fontSize: 8,
+    color: "#667085",
+    width: A4_WIDTH - MARGIN * 2,
+    align: "left",
+  });
+  document.x = MARGIN;
+  document.y = FOOTER_Y;
+  writeRichText(document, `第 ${pageNumber} 页`, {
+    fontSize: 8,
+    color: "#667085",
+    width: A4_WIDTH - MARGIN * 2,
+    align: "right",
+  });
   document.restore();
   document.x = MARGIN;
   document.y = MARGIN + 14;
@@ -255,7 +314,7 @@ export async function renderMarkdownPdf(
   signal?: AbortSignal,
 ): Promise<PdfRenderResult> {
   throwIfAborted(signal);
-  const fontPath = chineseFontPath();
+  const fallbackFontPath = chineseFontPath();
   if (!markdown.trim()) throw new Error("PDF 内容为空");
   const document = new PDFDocument({
     size: "A4",
@@ -278,8 +337,9 @@ export async function renderMarkdownPdf(
   });
   addPageChrome(document, pageCount, `${softwareName} · ${version}`);
 
-  document.font(fontPath).fillColor("#101828");
-  document.fontSize(16).text(kind === "code" ? "源代码文档" : kind === "manual" ? "用户手册" : "申请信息摘要", {
+  writeRichText(document, kind === "code" ? "源代码文档" : kind === "manual" ? "用户手册" : "申请信息摘要", {
+    fontSize: 16,
+    color: "#101828",
     align: "center",
     width: A4_WIDTH - MARGIN * 2,
   });
@@ -301,7 +361,7 @@ export async function renderMarkdownPdf(
         // cursor ourselves; the wrapper otherwise re-measures every token,
         // which is particularly expensive for the embedded CJK font.
         let x = MARGIN;
-        for (const run of codeTextRuns(line, fontPath)) {
+        for (const run of codeTextRuns(line, fallbackFontPath)) {
           document.font(run.font).fontSize(8.2).fillColor("#344054");
           document.text(run.text, x, document.y, { lineBreak: false });
           x += run.width;
@@ -323,13 +383,19 @@ export async function renderMarkdownPdf(
         continue;
       }
       if (row.kind === "heading") {
-        document.font(fontPath).fontSize(12).fillColor("#1d2939").text(row.text, { continued: false });
+        writeRichText(document, row.text, {
+          fontSize: 12,
+          color: "#1d2939",
+          width: A4_WIDTH - MARGIN * 2,
+        });
         document.moveDown(0.25);
         continue;
       }
-      document.font(fontPath).fontSize(10.2).fillColor("#101828").text(row.text, {
-        lineGap: 3,
+      writeRichText(document, row.text, {
+        fontSize: 10.2,
+        color: "#101828",
         width: A4_WIDTH - MARGIN * 2,
+        lineGap: 3,
       });
       document.moveDown(0.2);
     }

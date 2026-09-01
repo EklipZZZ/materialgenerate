@@ -41,3 +41,16 @@ test("native PDF renderer paginates a long mixed-language source archive", async
   assert.ok(result.pageCount > 20);
   assert.ok(result.buffer.includes(Buffer.from("%%EOF")));
 });
+
+test("native PDF renderer handles a long Chinese user manual", async () => {
+  const paragraph = "系统支持图像采集、质量检测、结果查询与报告导出，用户可根据权限完成对应操作。";
+  const markdown = [
+    "# 用户手册",
+    "",
+    Array.from({ length: 240 }, () => paragraph).join(""),
+  ].join("\n");
+  const result = await renderMarkdownPdf(markdown, "中文手册测试", "V1.0", "manual");
+  assert.ok(result.pageCount > 1);
+  assert.ok(result.buffer.subarray(0, 5).equals(Buffer.from("%PDF-")));
+  assert.ok(result.buffer.includes(Buffer.from("%%EOF")));
+});
