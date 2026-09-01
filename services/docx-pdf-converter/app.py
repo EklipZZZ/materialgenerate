@@ -2,6 +2,7 @@ import asyncio
 import hmac
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -15,6 +16,7 @@ from pypdf import PdfReader
 MAX_DOCX_BYTES = 20 * 1024 * 1024
 MAX_UNCOMPRESSED_BYTES = 150 * 1024 * 1024
 CONVERSION_TIMEOUT_SECONDS = 90
+SERVICE_VERSION = "2026-09-01-v2"
 conversion_lock = asyncio.Lock()
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -119,7 +121,11 @@ def convert(data: bytes) -> tuple[bytes, int]:
             if len(candidates) == 1:
                 output_path = candidates[0]
             else:
-                raise HTTPException(status_code=422, detail="Conversion produced no PDF")
+                diagnostic = safe_process_output(completed.stderr) or safe_process_output(completed.stdout)
+                detail = "Conversion produced no PDF"
+                if diagnostic:
+                    detail += f" ({diagnostic})"
+                raise HTTPException(status_code=422, detail=detail)
         pdf = output_path.read_bytes()
         if not pdf.startswith(b"%PDF-") or b"%%EOF" not in pdf[-2048:]:
             raise HTTPException(status_code=422, detail="Invalid PDF output")
@@ -128,8 +134,8 @@ def convert(data: bytes) -> tuple[bytes, int]:
 
 
 @app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+def health() -> dict[str, str | None]:
+    return {"status": "ok", "serviceVersion": SERVICE_VERSION, "soffice": shutil.which("soffice")}
 
 
 @app.post("/convert/docx-to-pdf")
