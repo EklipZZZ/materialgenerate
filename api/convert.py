@@ -12,6 +12,7 @@ sys.path.insert(0, str(ASSET_ROOT))
 
 from code_convert import code_convert_main  # noqa: E402
 from manual_convert import manual_convert_main  # noqa: E402
+from summary_convert import summary_convert_main  # noqa: E402
 
 
 MAX_BODY_BYTES = 4 * 1024 * 1024
@@ -57,7 +58,7 @@ class handler(BaseHTTPRequestHandler):
             markdown = body.get("markdown")
             software_name = str(body.get("softwareName") or "未知软件")[:300]
             version = str(body.get("version") or "V1.0")[:100]
-            if kind not in ("code", "manual") or not isinstance(markdown, str):
+            if kind not in ("code", "manual", "summary") or not isinstance(markdown, str):
                 raise ValueError("invalid conversion request")
             if len(markdown) > MAX_MARKDOWN_CHARS:
                 raise ValueError("markdown is too large")
@@ -69,7 +70,7 @@ class handler(BaseHTTPRequestHandler):
                 input_path.write_text(markdown, encoding="utf-8")
                 if kind == "code":
                     code_convert_main(str(input_path), str(output_path), software_name, version)
-                else:
+                elif kind == "manual":
                     cover_path = ASSET_ROOT / "template.docx"
                     manual_convert_main(
                         str(input_path),
@@ -78,6 +79,8 @@ class handler(BaseHTTPRequestHandler):
                         version,
                         str(cover_path) if cover_path.exists() else None,
                     )
+                else:
+                    summary_convert_main(str(input_path), str(output_path), software_name, version)
                 output = output_path.read_bytes()
 
             self.send_response(200)

@@ -14,7 +14,7 @@ Next.js App Router
   ├─ Zod 请求校验
   ├─ LLM 调用和生成任务状态持久化
   ├─ DOCX 生成/转换调用
-  └─ 原生 Node.js PDF 生成
+  └─ 隔离 LibreOffice 服务将 DOCX 转为 PDF
           │
           ├─ Supabase Database
           │    ├─ applications
@@ -29,7 +29,7 @@ Next.js App Router
                └─ 私有 generated-documents Bucket
 ```
 
-部署目标是 Vercel + Supabase。所有业务 API 使用 Node.js runtime，不依赖 Docker、LibreOffice 或常驻 Worker。
+主应用部署目标仍是 Vercel + Supabase。业务 API 使用 Node.js runtime；LibreOffice 放在独立、可休眠的低权限 Docker 转换服务中，服务只处理短期 DOCX/PDF，不持有数据库或 Supabase 全局权限。
 
 ## 页面与 API 边界
 
@@ -97,13 +97,14 @@ POST /api/generate
   → 写入 job_events 并向浏览器发送 SSE
   → 按 sourceMode 明确读取持久化源码包或生成源码
   → LLM 生成 Markdown 内容
-  → 由同一份规范化内容生成 DOCX 和 PDF
+  → 由规范化内容生成 DOCX
+  → LibreOffice 从该 DOCX 导出 PDF
   → 上传生成文件到私有 Bucket
   → 创建 generation_records 和 application_materials
   → 更新申请、任务为 completed
 ```
 
-生成接口目前仍是前台 SSE 长请求，不是真正的后台队列。关闭浏览器可能中断执行，但已经写入数据库的失败状态、任务事件和已经完成的文件记录不会依赖内存 Set 保存。长篇用户手册章节串行调用模型，并在同批请求失败时取消剩余调用；DeepSeek 文档生成默认关闭思考模式。由于 Vercel Hobby 计划的 Serverless Function 上限为 300 秒，生成函数配置为 300 秒，并在 270 秒触发服务端软超时，以便在平台硬终止前写入失败状态和释放任务锁。DOCX 生成完成后，三个 PDF 在同一生成进程中并行渲染，避免服务端自调用造成连接阻塞。
+生成接口目前仍是前台 SSE 长请求，不是真正的后台队列。关闭浏览器可能中断执行，但已经写入数据库的失败状态、任务事件和已经完成的文件记录不会依赖内存 Set 保存。长篇用户手册章节串行调用模型，并在同批请求失败时取消剩余调用；DeepSeek 文档生成默认关闭思考模式。由于 Vercel Hobby 计划的 Serverless Function 上限为 300 秒，生成函数配置为 300 秒，并在 270 秒触发服务端软超时，以便在平台硬终止前写入失败状态和释放任务锁。DOCX 生成完成后，主生成进程并行请求独立 LibreOffice 服务转换三个 PDF；转换服务内部限制 LibreOffice 并发，使用独立临时目录并在请求结束后删除文件，冷启动网关错误自动重试一次。
 
 发生异常时，任务进入 `failed` 或 `cancelled`，记录失败阶段，删除本次生成的临时产物，并将申请恢复到可重试状态。申请级源码压缩包会保留供重试使用；使用源码成功生成后再清理。模型请求尚未返回正文时发生网络、超时、429 或 5xx 错误，会在总时限内自动重试最多两次。
 
@@ -111,15 +112,15 @@ POST /api/generate
 
 ## 文档生成
 
-LLM 负责产生规范化 Markdown 内容。DOCX 和 PDF 从同一份内容生成，避免两个格式的正文分叉：
+LLM 负责产生规范化 Markdown 内容。DOCX 是正式排版的唯一来源，PDF 必须从生成后的 DOCX 转换，避免两个格式的正文和版式分叉：
 
 ```text
 规范化 Markdown
-  ├─ DOCX 生成/转换
-  └─ Node.js PDFKit + 项目内嵌中文字体
+  → DOCX 生成/模板排版
+  → LibreOffice Writer PDF 导出
 ```
 
-PDF 生成器使用 A4 页面、中文字体、代码等宽字体、自动换行、页眉页脚和连续页码。源码中的超长逻辑行会切成多个显示片段，但不会删除或改写字符，避免 PDFKit 在长 JSON/压缩内容上进行异常耗时的自动换行。PDF 在主生成进程内直接渲染，避免同一 Vercel 请求自调用造成阻塞。生成结果会进行字体、文件大小、软件名称、版本号、页数和文本内容预检，并将提醒返回给页面。生成产物使用 ASCII Storage 对象键，中文软件名只作为下载显示名称保存。
+LibreOffice 直接读取已验证的 DOCX，从而保留 Word 文档中的页眉、页脚、页码、源码行号、分页和字体映射。主应用校验 PDF 文件头、文件尾、大小和页数，并继续给出材料行数与页数提醒。生成产物使用 ASCII Storage 对象键，中文软件名只作为下载显示名称保存。旧 PDFKit 路由仅保留兼容诊断，不再进入正式材料生成链路。
 
 ## LLM 配置
 

@@ -281,7 +281,7 @@ data: {"step":"source_code","message":"正在生成源代码文档…","data":{}
 
 ### `POST /api/pdf`
 
-内部 PDF 渲染接口，仅由 `/api/generate` 通过 `CONVERTER_SHARED_SECRET` 对应的 `x-pdf-secret` 请求头调用。请求体为 `kind`、`markdown`、`softwareName` 和 `version`，成功时直接返回 `application/pdf`，并通过响应头返回页数和文本统计。前端不得直接调用该接口，也不得记录共享密钥。
+`/api/pdf` 是旧版内部 PDFKit 兼容接口，不再进入正式材料生成链路。正式链路先生成 DOCX，再由独立 LibreOffice 服务的 `POST /convert/docx-to-pdf` 转换。该外部接口接收原始 DOCX 二进制，使用 `x-converter-secret` 鉴权并返回 `application/pdf`；前端不得直接调用，日志不得记录共享密钥、请求正文或用户文件名。
 
 ## 安全边界
 

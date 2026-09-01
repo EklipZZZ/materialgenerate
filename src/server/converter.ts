@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { getServerEnv } from "./config";
 
-type ConversionKind = "code" | "manual";
+type ConversionKind = "code" | "manual" | "summary";
 const DOCUMENT_CONVERSION_TIMEOUT_MS = 120_000;
 
 export class DocumentConversionError extends Error {
@@ -42,7 +42,8 @@ async function localConversion(
     await writeFile(inputPath, markdown, "utf8");
     const args = ["--input_md", inputPath, "--output_docx", outputPath, "--software_name", softwareName, "--version", version];
     if (kind === "manual") args.push("--cover", resolve(process.cwd(), "assets/template.docx"));
-    await runPython(kind === "code" ? "code_convert.py" : "manual_convert.py", args, signal);
+    const script = kind === "code" ? "code_convert.py" : kind === "manual" ? "manual_convert.py" : "summary_convert.py";
+    await runPython(script, args, signal);
     return await readFile(outputPath);
   } finally {
     await rm(directory, { recursive: true, force: true }).catch(() => undefined);

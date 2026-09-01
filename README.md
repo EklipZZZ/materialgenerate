@@ -52,7 +52,7 @@ Vercel 使用 Next.js 默认输出目录，不使用 `out`，也不使用 Docker
 
 ## Supabase
 
-按文件名顺序执行 `supabase/migrations/` 下的 4 个 SQL 文件，创建 Auth 用户关联的申请、著作权人、材料、持久化任务、生成记录、索引和 RLS。Storage 中创建名为 `generated-documents` 的私有 Bucket。PDF 使用项目内的 Noto Sans SC 字体生成，不依赖 Docker 或 LibreOffice。
+按文件名顺序执行 `supabase/migrations/` 下的 SQL 文件，创建 Auth 用户关联的申请、著作权人、材料、持久化任务、生成记录、源码包、索引和 RLS。Storage 中创建名为 `generated-documents` 的私有 Bucket。DOCX 由现有 Python 模板生成，正式 PDF 由 `services/docx-pdf-converter` 中的 LibreOffice 隔离服务从 DOCX 转换，避免两套排版引擎造成页眉、页码、行号和中文字体错乱。
 
 ## 部署
 

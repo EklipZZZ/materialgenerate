@@ -69,6 +69,7 @@ SUPABASE_URL=<Supabase Project URL>
 SUPABASE_SERVICE_ROLE_KEY=<Supabase Secret/service role key>
 SUPABASE_STORAGE_BUCKET=generated-documents
 CONVERTER_SHARED_SECRET=<随机生成的高强度字符串>
+DOCX_PDF_CONVERTER_URL=<LibreOffice 转换服务 HTTPS 地址>
 LLM_CONFIG_ENCRYPTION_KEY=<32 字节密钥的 base64 或 64 位 hex>
 LLM_REQUEST_TIMEOUT_MS=120000
 ```
@@ -85,9 +86,15 @@ $rng.Dispose()
 
 同样的方法也可以生成 `LLM_CONFIG_ENCRYPTION_KEY`。两者应使用不同的随机值；加密根密钥上线后必须长期保管，不能随意更换。
 
+## 5. LibreOffice PDF 转换服务
+
+将 `services/docx-pdf-converter` 作为独立 Docker 服务部署。免费平台可使用 SnapDeploy 或 Kubeletto，但必须先用长篇源码文档验证 512 MB 内存是否足够。
+
+转换服务只配置 `CONVERTER_SHARED_SECRET`，且必须与 Vercel 使用相同随机密钥。不要向转换服务配置 `SUPABASE_SERVICE_ROLE_KEY`、数据库连接串、模型 API Key 或 `LLM_CONFIG_ENCRYPTION_KEY`。部署后先验证 `GET /health`，再把服务根地址写入 Vercel 的 `DOCX_PDF_CONVERTER_URL`。免费实例会休眠，生成接口会对冷启动网关错误重试一次。
+
 `LLM_CONFIG_ENCRYPTION_KEY` 是已有用户 API Key 的解密根密钥，首次上线后必须长期保管，不能随意更换；如需轮换，应先设计密钥迁移。不要把用户的 OpenAI/DeepSeek Key 配置到 Vercel，用户在网页设置中保存自己的 Key。
 
-## 5. Supabase Auth URL
+## 6. Supabase Auth URL
 
 部署后，在 Authentication → URL Configuration 设置：
 
@@ -102,7 +109,7 @@ https://<your-project>.vercel.app/auth/reset-password/
 
 正式域名变更后，同时更新 Site URL 和 Redirect URLs。
 
-## 6. 文档与接口契约检查
+## 7. 文档与接口契约检查
 
 部署前运行：
 
@@ -116,7 +123,7 @@ pnpm build
 
 开发文档入口为 [docs/README.md](./docs/README.md)。接口变更必须同步更新共享 Zod schema、`src/server/openapi.ts`、[docs/api.md](./docs/api.md) 和 [docs/openapi.json](./docs/openapi.json)。
 
-## 7. 首次验收
+## 8. 首次验收
 
 按以下顺序测试：
 
