@@ -12,6 +12,7 @@ test("formal generation converts each generated DOCX through LibreOffice service
   assert.equal((pipeline.match(/convertDocxToPdf\(/g) || []).length, 3);
   assert.match(client, /\/convert\/docx-to-pdf/);
   assert.match(client, /x-converter-secret/);
-  assert.match(dockerfile, /libreoffice-writer/);
+assert.match(dockerfile, /libreoffice-writer/);
+assert.match(dockerfile, /SAL_USE_VCLPLUGIN=svp/);
   assert.match(dockerfile, /fonts-noto-cjk/);
 });

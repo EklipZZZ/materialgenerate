@@ -95,7 +95,7 @@ def convert(data: bytes) -> tuple[bytes, int]:
                     **os.environ,
                     "HOME": str(home_path),
                     "TMPDIR": str(tmp_path),
-                    "SAL_USE_VCLPLUGIN": "gen",
+                    "SAL_USE_VCLPLUGIN": os.environ.get("SAL_USE_VCLPLUGIN", "svp"),
                 },
             )
         except subprocess.TimeoutExpired as error:
