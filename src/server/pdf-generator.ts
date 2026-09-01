@@ -1,5 +1,5 @@
 import PDFDocument from "pdfkit";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
 const A4_WIDTH = 595.28;
@@ -8,6 +8,7 @@ const HEADER_Y = 28;
 const FOOTER_Y = 806;
 const CODE_ASCII_CHUNK_CHARS = 94;
 const CODE_CJK_CHUNK_CHARS = 58;
+const CODE_LINE_HEIGHT = 10.25;
 const BODY_CHUNK_CHARS = 240;
 
 type PdfRowKind = "body" | "heading" | "code" | "blank";
@@ -22,31 +23,105 @@ interface PdfCodeBlock {
   lines: string[];
 }
 
-let cachedChineseFontPath: string | undefined;
+interface ChineseFontSubset {
+  path: string;
+  ranges: Array<[number, number]>;
+}
 
-function chineseFontPath(): string {
-  if (cachedChineseFontPath) return cachedChineseFontPath;
-  const fontFile = "noto-sans-sc-chinese-simplified-400-normal.woff";
-  const fontPath = path.join(
-    process.cwd(),
-    "node_modules",
-    "@fontsource",
-    "noto-sans-sc",
-    "files",
-    fontFile,
-  );
-  const candidates = [fontPath];
+interface PdfTextRun {
+  font: string;
+  text: string;
+  width: number;
+}
+
+let cachedChineseFontPath: string | undefined;
+let cachedChineseFontSubsets: ChineseFontSubset[] | undefined;
+
+function fontPackageRoots(): string[] {
+  const roots = [path.join(process.cwd(), "node_modules", "@fontsource", "noto-sans-sc")];
   const pnpmRoot = path.join(process.cwd(), "node_modules", ".pnpm");
   if (existsSync(pnpmRoot)) {
     for (const entry of readdirSync(pnpmRoot)) {
       if (!entry.startsWith("@fontsource+noto-sans-sc@")) continue;
-      candidates.push(path.join(pnpmRoot, entry, "node_modules", "@fontsource", "noto-sans-sc", "files", fontFile));
+      roots.push(path.join(pnpmRoot, entry, "node_modules", "@fontsource", "noto-sans-sc"));
     }
   }
-  const found = candidates.find((candidate) => existsSync(candidate));
+  return roots;
+}
+
+function fontAssetPath(fileName: string): string | undefined {
+  return fontPackageRoots()
+    .map((root) => path.join(root, "files", fileName))
+    .find((candidate) => existsSync(candidate));
+}
+
+function chineseFontPath(): string {
+  if (cachedChineseFontPath) return cachedChineseFontPath;
+  const fontFile = "noto-sans-sc-chinese-simplified-400-normal.woff";
+  const found = fontAssetPath(fontFile);
   if (!found) throw new Error("中文字体资源未找到，请检查部署包中的 Noto Sans SC 字体");
   cachedChineseFontPath = found;
   return found;
+}
+
+function parseUnicodeRanges(value: string): Array<[number, number]> {
+  return value.split(",").flatMap((item) => {
+    const match = item.trim().match(/^U\+([0-9a-f]+)(?:-([0-9a-f]+))?$/i);
+    if (!match) return [];
+    const start = Number.parseInt(match[1], 16);
+    const end = Number.parseInt(match[2] || match[1], 16);
+    return Number.isFinite(start) && Number.isFinite(end) ? [[start, end] as [number, number]] : [];
+  });
+}
+
+function chineseFontSubsets(): ChineseFontSubset[] {
+  if (cachedChineseFontSubsets) return cachedChineseFontSubsets;
+  const subsets: ChineseFontSubset[] = [];
+  const blockPattern = /\/\* noto-sans-sc-(?:\[([^\]]+)\]|([a-z-]+))-400-normal \*\/([\s\S]*?)(?=\/\* noto-sans-sc-|$)/g;
+  for (const root of fontPackageRoots()) {
+    const cssPath = path.join(root, "400.css");
+    if (!existsSync(cssPath)) continue;
+    let css: string;
+    try {
+      css = readFileSync(cssPath, "utf8");
+    } catch {
+      continue;
+    }
+    for (const match of css.matchAll(blockPattern)) {
+      const id = match[1] || match[2];
+      const ranges = parseUnicodeRanges(match[3].match(/unicode-range:\s*([^;]+);/i)?.[1] || "");
+      if (!id || !ranges.length) continue;
+      const subsetPath = fontAssetPath(`noto-sans-sc-${id}-400-normal.woff2`)
+        || fontAssetPath(`noto-sans-sc-${id}-400-normal.woff`);
+      if (!subsetPath || subsets.some((subset) => subset.path === subsetPath)) continue;
+      subsets.push({ path: subsetPath, ranges });
+    }
+    if (subsets.length) break;
+  }
+  cachedChineseFontSubsets = subsets;
+  return subsets;
+}
+
+function chineseSubsetPath(codePoint: number): string | undefined {
+  return chineseFontSubsets().find((subset) => subset.ranges.some(([start, end]) => codePoint >= start && codePoint <= end))?.path;
+}
+
+function codeTextRuns(value: string, fallbackFontPath: string): PdfTextRun[] {
+  const runs: PdfTextRun[] = [];
+  for (const character of [...value]) {
+    const codePoint = character.codePointAt(0) || 0;
+    const isAscii = codePoint <= 0x7f;
+    const font = isAscii ? "Courier" : chineseSubsetPath(codePoint) || fallbackFontPath;
+    const width = isAscii ? 8.2 * 0.6 : 8.2;
+    const previous = runs[runs.length - 1];
+    if (previous?.font === font) {
+      previous.text += character;
+      previous.width += width;
+    } else {
+      runs.push({ font, text: character, width });
+    }
+  }
+  return runs.length ? runs : [{ font: "Courier", text: " ", width: 8.2 * 0.6 }];
 }
 
 function cleanInlineMarkdown(value: string): string {
@@ -219,11 +294,20 @@ export async function renderMarkdownPdf(
     const blocks = codePdfBlocks(markdown);
     for (const block of blocks) {
       throwIfAborted(signal);
-      document.font(block.font === "chinese" ? fontPath : "Courier").fontSize(8.2).fillColor("#344054");
-      document.text(block.lines.join("\n"), {
-        lineGap: 1,
-        width: A4_WIDTH - MARGIN * 2,
-      });
+      for (const line of block.lines) {
+        if (document.y + CODE_LINE_HEIGHT > 770) document.addPage();
+        // `codePdfBlocks` has already split every source line to the measured
+        // width of its selected font. Avoid PDFKit's word wrapper and move the
+        // cursor ourselves; the wrapper otherwise re-measures every token,
+        // which is particularly expensive for the embedded CJK font.
+        let x = MARGIN;
+        for (const run of codeTextRuns(line, fontPath)) {
+          document.font(run.font).fontSize(8.2).fillColor("#344054");
+          document.text(run.text, x, document.y, { lineBreak: false });
+          x += run.width;
+        }
+        document.y += CODE_LINE_HEIGHT;
+      }
       await yieldToEventLoop();
     }
   } else {

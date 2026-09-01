@@ -30,3 +30,14 @@ test("native PDF renderer handles an unusually long source line", async () => {
   assert.ok(result.pageCount > 1);
   assert.ok(result.buffer.includes(Buffer.from("%%EOF")));
 });
+
+test("native PDF renderer paginates a long mixed-language source archive", async () => {
+  const markdown = Array.from(
+    { length: 1_200 },
+    (_, index) => `def detect_${index}():  # 图像检测结果与阈值分析\n    return ${index}`,
+  ).join("\n");
+  const result = await renderMarkdownPdf(markdown, "混合源码测试", "V1.0", "code");
+  assert.equal(result.sourceLineCount, 2_400);
+  assert.ok(result.pageCount > 20);
+  assert.ok(result.buffer.includes(Buffer.from("%%EOF")));
+});
