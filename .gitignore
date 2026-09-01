@@ -99,3 +99,4 @@ __pycache__/
 # Misc
 .vercel
 .turbo
+tmp/

@@ -1,7 +1,9 @@
 import asyncio
 import hmac
 import os
+import re
 import subprocess
+import sys
 import tempfile
 import zipfile
 from pathlib import Path
@@ -42,43 +44,82 @@ def validate_docx_file(path: Path) -> None:
         raise HTTPException(status_code=400, detail="Invalid DOCX") from error
 
 
+def safe_process_output(value: bytes) -> str:
+    text = value.decode("utf-8", errors="replace")
+    text = re.sub(r"(?:/tmp|/app)/[^\s]+", "<temp>", text)
+    return " ".join(text.split())[:500]
+
+
 def convert(data: bytes) -> tuple[bytes, int]:
     with tempfile.TemporaryDirectory(prefix="softreg-pdf-") as directory:
         root = Path(directory)
-        input_path = root / "input.docx"
-        output_path = root / "input.pdf"
+        input_dir = root / "input"
+        output_dir = root / "output"
+        input_dir.mkdir()
+        output_dir.mkdir()
+        input_path = input_dir / "source.docx"
+        output_path = output_dir / "source.pdf"
         profile_path = root / "lo-profile"
+        home_path = root / "home"
+        tmp_path = root / "tmp"
+        home_path.mkdir()
+        tmp_path.mkdir()
         input_path.write_bytes(data)
         validate_docx_file(input_path)
+        soffice_bin = os.environ.get("LIBREOFFICE_BIN", "soffice")
         command = [
-            "soffice",
+            soffice_bin,
             "--headless",
             "--nologo",
             "--nodefault",
+            "--norestore",
             "--nolockcheck",
             "--nofirststartwizard",
             f"-env:UserInstallation={profile_path.as_uri()}",
             "--convert-to",
             "pdf:writer_pdf_Export",
             "--outdir",
-            str(root),
+            str(output_dir),
             str(input_path),
         ]
         try:
-            subprocess.run(
+            completed = subprocess.run(
                 command,
-                check=True,
+                check=False,
                 timeout=CONVERSION_TIMEOUT_SECONDS,
-                stdout=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                env={**os.environ, "SAL_USE_VCLPLUGIN": "gen"},
+                env={
+                    **os.environ,
+                    "HOME": str(home_path),
+                    "TMPDIR": str(tmp_path),
+                    "SAL_USE_VCLPLUGIN": "gen",
+                },
             )
         except subprocess.TimeoutExpired as error:
             raise HTTPException(status_code=504, detail="Conversion timed out") from error
-        except subprocess.CalledProcessError as error:
-            raise HTTPException(status_code=422, detail="Conversion failed") from error
+        if completed.returncode != 0:
+            print(
+                "LibreOffice conversion failed "
+                f"(exit={completed.returncode}, stderr={safe_process_output(completed.stderr)})",
+                file=sys.stderr,
+                flush=True,
+            )
+            raise HTTPException(status_code=422, detail="Conversion failed")
         if not output_path.exists():
-            raise HTTPException(status_code=422, detail="Conversion produced no PDF")
+            candidates = [path for path in output_dir.iterdir() if path.is_file() and path.suffix.lower() == ".pdf"]
+            print(
+                "LibreOffice returned without the expected PDF "
+                f"(stdout={safe_process_output(completed.stdout)}, "
+                f"stderr={safe_process_output(completed.stderr)}, "
+                f"candidates={[path.name for path in candidates]})",
+                file=sys.stderr,
+                flush=True,
+            )
+            if len(candidates) == 1:
+                output_path = candidates[0]
+            else:
+                raise HTTPException(status_code=422, detail="Conversion produced no PDF")
         pdf = output_path.read_bytes()
         if not pdf.startswith(b"%PDF-") or b"%%EOF" not in pdf[-2048:]:
             raise HTTPException(status_code=422, detail="Invalid PDF output")
