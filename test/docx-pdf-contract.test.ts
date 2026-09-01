@@ -9,7 +9,8 @@ test("formal generation converts each generated DOCX through LibreOffice service
     readFile("services/docx-pdf-converter/Dockerfile", "utf8"),
   ]);
   assert.equal(pipeline.includes("renderPdfDocument("), false);
-  assert.equal((pipeline.match(/convertDocxToPdf\(/g) || []).length, 3);
+  assert.equal((pipeline.match(/convertDocxToPdf\(/g) || []).length, 2);
+  assert.equal(pipeline.includes("summaryPdf"), false);
   assert.match(client, /\/convert\/docx-to-pdf/);
   assert.match(client, /x-converter-secret/);
   assert.match(client, /\/api\/public\/wake\//);

@@ -40,7 +40,6 @@ interface GenerationResult {
   sourceCodePdf?: string;
   userManualDocx?: string;
   userManualPdf?: string;
-  applicationSummaryPdf?: string;
   collectionFormMarkdown?: string;
   fileName?: string;
   recordId?: string;
@@ -91,7 +90,6 @@ function resultItems() {
     { key: "sourceCodePdf", label: "源代码文档", description: "PDF", icon: FileText },
     { key: "userManualDocx", label: "用户手册", description: "DOCX", icon: FileText },
     { key: "userManualPdf", label: "用户手册", description: "PDF", icon: FileText },
-    { key: "applicationSummaryPdf", label: "申请信息摘要", description: "PDF", icon: FileOutput },
     { key: "collectionFormMarkdown", label: "采集表", description: "Markdown", icon: FileOutput },
   ] as const;
 }

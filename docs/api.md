@@ -235,9 +235,7 @@ data: {"step":"source_code","message":"正在生成源代码文档…","data":{}
 
 （4）`user_manual_pdf`；
 
-（5）`application_summary_pdf`；
-
-（6）`collection_form`。
+（5）`collection_form`。
 
 ## LLM 配置接口
 

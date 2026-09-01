@@ -52,7 +52,7 @@
 
 （2）`user_manual_docx`、`user_manual_pdf`；
 
-（3）`application_summary_pdf`；
+（3）`application_summary_pdf`（历史兼容类型，不再新生成或展示）；
 
 （4）`cooperation_agreement`；
 

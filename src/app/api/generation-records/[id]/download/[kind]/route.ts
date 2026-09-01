@@ -12,7 +12,6 @@ const keyFields = {
   source_code_pdf: "source_code_pdf_object_key",
   user_manual: "user_manual_object_key",
   user_manual_pdf: "user_manual_pdf_object_key",
-  application_summary_pdf: "application_summary_pdf_object_key",
   collection_form: "collection_form_object_key",
 } as const;
 

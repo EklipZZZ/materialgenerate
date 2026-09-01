@@ -2070,7 +2070,6 @@
                 "source_code_pdf",
                 "user_manual",
                 "user_manual_pdf",
-                "application_summary_pdf",
                 "collection_form"
               ],
               "description": "下载文件类型。"

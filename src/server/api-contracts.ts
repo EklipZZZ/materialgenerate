@@ -264,6 +264,5 @@ export const downloadKindSchema = z.enum([
   "source_code_pdf",
   "user_manual",
   "user_manual_pdf",
-  "application_summary_pdf",
   "collection_form",
 ]);

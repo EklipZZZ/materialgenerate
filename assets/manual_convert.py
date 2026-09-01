@@ -14,7 +14,7 @@ from pathlib import Path
 try:
     from docx import Document
     from docx.shared import Pt, Inches, RGBColor
-    from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
+    from docx.enum.text import WD_PARAGRAPH_ALIGNMENT, WD_TAB_ALIGNMENT
     from docx.oxml.shared import OxmlElement, qn
     import markdown
     from bs4 import BeautifulSoup
@@ -374,9 +374,12 @@ class MarkdownToWordConverter:
             spacing.set(qn('w:after'), '40')
     
     def add_header_with_page_number(self):
-        """添加页眉和页码（统一覆盖所有节，确保只存在一个 PAGE 域）"""
+        """使用与源代码文档相同的单段页眉，避开模板中的浮动 PAGE 内容控件。"""
         for section in self.doc.sections:
-            # 不再区分首页 / 偶数页页眉，统一样式，避免模板自带的页眉参与渲染
+            # 模板历史页眉把 PAGE 域放在带 framePr 的 SDT 中，标题另占一段。
+            # Word 会把两者视觉叠放，LibreOffice 则按两个段落导出，导致 PAGE 1
+            # 独占一行且缓存页码不更新。因此必须清空 header 根节点，而不只是
+            # paragraph.clear()（后者无法删除包在顶层 SDT 中的字段）。
             section.different_first_page_header_footer = False
 
             # 需要处理的所有可能页眉：默认 / 首页 / 偶数页
@@ -392,28 +395,28 @@ class MarkdownToWordConverter:
                 if header is None:
                     continue
 
-                # 清空现有内容，防止模板中残留的 {PAGE} 域
-                for paragraph in header.paragraphs:
-                    paragraph.clear()
-
-                # 创建页眉段落
-                header_para = header.paragraphs[0] if header.paragraphs else header.add_paragraph()
+                header_element = header._element
+                for child in list(header_element):
+                    header_element.remove(child)
+                header_para = header.add_paragraph()
+                header_para.paragraph_format.space_before = Pt(0)
+                header_para.paragraph_format.space_after = Pt(0)
 
                 # 添加制表符（用于居中和右对齐）
                 tab_stops = header_para.paragraph_format.tab_stops
-                tab_stops.add_tab_stop(Inches(3.0), WD_PARAGRAPH_ALIGNMENT.CENTER)
-                tab_stops.add_tab_stop(Inches(6.0), WD_PARAGRAPH_ALIGNMENT.RIGHT)
+                tab_stops.add_tab_stop(Inches(3.0), WD_TAB_ALIGNMENT.CENTER)
+                tab_stops.add_tab_stop(Inches(6.0), WD_TAB_ALIGNMENT.RIGHT)
 
                 # 添加软件名称和版本号（居中）
                 header_para.add_run('\t')
-                run_name = header_para.add_run(f'{self.software_name} {self.version}')
-                run_name.font.size = Pt(10.5)
+                run_name = header_para.add_run(f'{self.software_name} {self.version} 用户手册')
+                run_name.font.size = Pt(9)
                 run_name.font.name = '宋体'
 
-                # 添加页码（右对齐，仅此一处）
+                # 与源代码文档保持一致：PAGE 域和标题位于同一普通段落。
                 header_para.add_run('\t')
                 run_page = header_para.add_run()
-                run_page.font.size = Pt(10.5)
+                run_page.font.size = Pt(9)
                 run_page.font.name = '宋体'
 
                 # 插入页码域 { PAGE }
@@ -447,11 +450,8 @@ class MarkdownToWordConverter:
         # 3. 转换HTML到Word
         self.html_to_word(html)
         
-        # 4. 页眉与页码策略：
-        #    - 如果提供了封面模板：完全尊重模板自身的页眉与页码设置，不再额外插入 PAGE 域
-        #    - 如果未提供封面模板：为整份文档自动添加统一的页眉和页码
-        if not self.cover_template:
-            self.add_header_with_page_number()
+        # 4. 无论是否使用封面模板，都规范化为与源代码文档相同的单段页眉。
+        self.add_header_with_page_number()
         
         # 6. 保存文档
         self.doc.save(output_docx)

@@ -37,7 +37,6 @@ const downloads = [
   { kind: "source_code_pdf", label: "源代码 PDF", icon: FileArchive },
   { kind: "user_manual", label: "用户手册", icon: FileOutput },
   { kind: "user_manual_pdf", label: "用户手册 PDF", icon: FileOutput },
-  { kind: "application_summary_pdf", label: "申请信息摘要 PDF", icon: FileOutput },
   { kind: "collection_form", label: "采集表", icon: FileOutput },
 ] as const;
 

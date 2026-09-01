@@ -61,7 +61,6 @@ export const generatedMaterialKinds: MaterialKind[] = [
   "source_code_pdf",
   "user_manual_docx",
   "user_manual_pdf",
-  "application_summary_pdf",
 ];
 
 export const visibleMaterialKinds: MaterialKind[] = [

@@ -217,7 +217,7 @@ export async function POST(request: NextRequest) {
             },
           });
 
-          emit("upload", "正在上传 DOCX、PDF 和摘要材料…");
+          emit("upload", "正在上传 DOCX、PDF 和采集表…");
           const prefix = `generations/${user.id}/${application.id}/${Date.now()}-${randomUUID()}`;
           const softwareName = safeName(generated.softwareName);
           const {
@@ -225,7 +225,6 @@ export async function POST(request: NextRequest) {
             sourcePdfObjectKey,
             manualObjectKey,
             manualPdfObjectKey,
-            summaryPdfObjectKey,
             collectionObjectKey,
           } = generationObjectKeys(prefix);
           uploadedKeys.push(
@@ -233,7 +232,6 @@ export async function POST(request: NextRequest) {
             sourcePdfObjectKey,
             manualObjectKey,
             manualPdfObjectKey,
-            summaryPdfObjectKey,
             collectionObjectKey,
           );
           stage = "storage-upload";
@@ -242,16 +240,14 @@ export async function POST(request: NextRequest) {
             uploadBuffer(sourcePdfObjectKey, generated.sourcePdf, "application/pdf"),
             uploadBuffer(manualObjectKey, generated.manualDocx, "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
             uploadBuffer(manualPdfObjectKey, generated.manualPdf, "application/pdf"),
-            uploadBuffer(summaryPdfObjectKey, generated.summaryPdf, "application/pdf"),
             uploadBuffer(collectionObjectKey, Buffer.from(generated.collectionMarkdown, "utf8"), "text/markdown; charset=utf-8"),
           ]);
 
-          const [sourceCodeDocx, sourceCodePdf, userManualDocx, userManualPdf, applicationSummaryPdf, collectionFormMarkdown] = await Promise.all([
+          const [sourceCodeDocx, sourceCodePdf, userManualDocx, userManualPdf, collectionFormMarkdown] = await Promise.all([
             signedDownloadUrl(sourceObjectKey),
             signedDownloadUrl(sourcePdfObjectKey),
             signedDownloadUrl(manualObjectKey),
             signedDownloadUrl(manualPdfObjectKey),
-            signedDownloadUrl(summaryPdfObjectKey),
             signedDownloadUrl(collectionObjectKey),
           ]);
           const record = await getSupabaseAdmin().from("generation_records").insert({
@@ -263,7 +259,6 @@ export async function POST(request: NextRequest) {
             source_code_pdf_object_key: sourcePdfObjectKey,
             user_manual_object_key: manualObjectKey,
             user_manual_pdf_object_key: manualPdfObjectKey,
-            application_summary_pdf_object_key: summaryPdfObjectKey,
             collection_form_object_key: collectionObjectKey,
             job_id: jobId,
             provider: llmConfig.provider,
@@ -283,7 +278,6 @@ export async function POST(request: NextRequest) {
               { kind: "source_code_pdf", fileName: `${softwareName}-source-code.pdf`, objectKey: sourcePdfObjectKey, mimeType: "application/pdf", sizeBytes: generated.sourcePdf.length },
               { kind: "user_manual_docx", fileName: `${softwareName}-user-manual.docx`, objectKey: manualObjectKey, mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", sizeBytes: generated.manualDocx.length },
               { kind: "user_manual_pdf", fileName: `${softwareName}-user-manual.pdf`, objectKey: manualPdfObjectKey, mimeType: "application/pdf", sizeBytes: generated.manualPdf.length },
-              { kind: "application_summary_pdf", fileName: `${softwareName}-application-summary.pdf`, objectKey: summaryPdfObjectKey, mimeType: "application/pdf", sizeBytes: generated.summaryPdf.length },
             ],
           });
           const applicationUpdate = await getSupabaseAdmin().from("applications").update({
@@ -308,7 +302,6 @@ export async function POST(request: NextRequest) {
             sourceCodePdf,
             userManualDocx,
             userManualPdf,
-            applicationSummaryPdf,
             collectionFormMarkdown,
             fileName: softwareName,
             recordId: createdGenerationRecordId,

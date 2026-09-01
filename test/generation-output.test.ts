@@ -10,7 +10,6 @@ test("generated Storage object keys remain ASCII even for Chinese software displ
     `${prefix}/source-code.pdf`,
     `${prefix}/user-manual.docx`,
     `${prefix}/user-manual.pdf`,
-    `${prefix}/application-summary.pdf`,
     `${prefix}/collection-form.md`,
   ]);
   for (const key of Object.values(keys)) assert.match(key, /^[\x20-\x7e]+$/);
