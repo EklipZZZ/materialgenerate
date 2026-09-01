@@ -402,10 +402,15 @@ class MarkdownToWordConverter:
                 header_para.paragraph_format.space_before = Pt(0)
                 header_para.paragraph_format.space_after = Pt(0)
 
-                # 添加制表符（用于居中和右对齐）
+                # 页眉制表位必须落在当前 section 的可打印宽度内。
+                # 用户手册模板左右页边距各 1.25 英寸，可用宽度约 5.77 英寸；
+                # 旧实现把页码固定放在 6.0 英寸处，生产 LibreOffice 会直接裁掉。
+                usable_width = section.page_width - section.left_margin - section.right_margin
+
+                # 添加制表符（标题居中、页码贴右）
                 tab_stops = header_para.paragraph_format.tab_stops
-                tab_stops.add_tab_stop(Inches(3.0), WD_TAB_ALIGNMENT.CENTER)
-                tab_stops.add_tab_stop(Inches(6.0), WD_TAB_ALIGNMENT.RIGHT)
+                tab_stops.add_tab_stop(usable_width // 2, WD_TAB_ALIGNMENT.CENTER)
+                tab_stops.add_tab_stop(usable_width, WD_TAB_ALIGNMENT.RIGHT)
 
                 # 添加软件名称和版本号（居中）
                 header_para.add_run('\t')
