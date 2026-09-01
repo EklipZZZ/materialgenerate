@@ -12,7 +12,10 @@ test("formal generation converts each generated DOCX through LibreOffice service
   assert.equal((pipeline.match(/convertDocxToPdf\(/g) || []).length, 3);
   assert.match(client, /\/convert\/docx-to-pdf/);
   assert.match(client, /x-converter-secret/);
-assert.match(dockerfile, /libreoffice-writer/);
-assert.match(dockerfile, /SAL_USE_VCLPLUGIN=svp/);
+  assert.match(client, /\/api\/public\/wake\//);
+  assert.match(client, /CONVERTER_WAKE_TIMEOUT_MS = 120_000/);
+  assert.equal(pipeline.includes("Promise.all([\n    convertDocxToPdf"), false);
+  assert.match(dockerfile, /libreoffice-writer/);
+  assert.match(dockerfile, /SAL_USE_VCLPLUGIN=svp/);
   assert.match(dockerfile, /fonts-noto-cjk/);
 });

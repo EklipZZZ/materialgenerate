@@ -243,13 +243,11 @@ export async function generateMaterials(input: GenerationInput): Promise<Generat
     convertMarkdown("summary", collectionMarkdown, softwareName, version, input.requestUrl, signal),
   ]);
   emit({ step: "convert", message: "DOCX 文档生成完成，正在使用 LibreOffice 转换源代码、用户手册和摘要 PDF…" });
-  const [sourcePdfResult, manualPdfResult, summaryPdfResult] = await Promise.all([
-    convertDocxToPdf(sourceDocx, sourceMarkdown, input.requestUrl, signal),
-    convertDocxToPdf(manualDocx, manualMarkdown, input.requestUrl, signal),
-    convertDocxToPdf(summaryDocx, collectionMarkdown, input.requestUrl, signal),
-  ]);
+  const sourcePdfResult = await convertDocxToPdf(sourceDocx, sourceMarkdown, input.requestUrl, signal);
   emit({ step: "convert", message: `源代码 PDF 生成完成，共${sourcePdfResult.pageCount}页` });
+  const manualPdfResult = await convertDocxToPdf(manualDocx, manualMarkdown, input.requestUrl, signal);
   emit({ step: "convert", message: `用户手册 PDF 生成完成，共${manualPdfResult.pageCount}页` });
+  const summaryPdfResult = await convertDocxToPdf(summaryDocx, collectionMarkdown, input.requestUrl, signal);
   emit({ step: "convert", message: `申请信息摘要 PDF 生成完成，共${summaryPdfResult.pageCount}页` });
   const pdfWarnings = [
     ...preflightPdf(sourcePdfResult, softwareName, version, sourceMarkdown, "code"),
