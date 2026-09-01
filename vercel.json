@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "pnpm build",
+  "buildCommand": "npx --yes pnpm@11.19.0 build",
   "installCommand": "npx --yes pnpm@11.19.0 install --frozen-lockfile",
   "functions": {
     "api/convert.py": {
