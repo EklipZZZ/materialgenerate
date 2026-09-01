@@ -90,7 +90,7 @@ $rng.Dispose()
 
 将 `services/docx-pdf-converter` 作为独立 Docker 服务部署。免费平台可使用 SnapDeploy 或 Kubeletto，但必须先用长篇源码文档验证 512 MB 内存是否足够。
 
-转换服务只配置 `CONVERTER_SHARED_SECRET`，且必须与 Vercel 使用相同随机密钥。不要向转换服务配置 `SUPABASE_SERVICE_ROLE_KEY`、数据库连接串、模型 API Key 或 `LLM_CONFIG_ENCRYPTION_KEY`。部署后先验证 `GET /health`，再把服务根地址写入 Vercel 的 `DOCX_PDF_CONVERTER_URL`。免费实例会休眠，生成接口会对冷启动网关错误重试一次。
+转换服务只配置 `CONVERTER_SHARED_SECRET`，且必须与 Vercel 使用相同随机密钥。不要向转换服务配置 `SUPABASE_SERVICE_ROLE_KEY`、数据库连接串、模型 API Key 或 `LLM_CONFIG_ENCRYPTION_KEY`。部署后先验证 `GET /health`，再把服务根地址写入 Vercel 的 `DOCX_PDF_CONVERTER_URL`。免费实例会休眠，生成接口会对冷启动网关错误做短指数退避重试，覆盖平台约 60–90 秒的唤醒窗口。
 
 `LLM_CONFIG_ENCRYPTION_KEY` 是已有用户 API Key 的解密根密钥，首次上线后必须长期保管，不能随意更换；如需轮换，应先设计密钥迁移。不要把用户的 OpenAI/DeepSeek Key 配置到 Vercel，用户在网页设置中保存自己的 Key。
 

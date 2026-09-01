@@ -7,6 +7,7 @@ import { getServerEnv } from "./config";
 import type { PdfRenderResult } from "./pdf-generator";
 
 const PDF_CONVERSION_TIMEOUT_MS = 150_000;
+const REMOTE_RETRY_DELAYS_MS = [5_000, 10_000, 15_000, 20_000, 20_000, 20_000, 20_000];
 const MAX_PDF_BYTES = 30 * 1024 * 1024;
 
 export class PdfConversionError extends Error {
@@ -27,6 +28,22 @@ function assertPdf(buffer: Buffer): void {
 
 function inferredPageCount(buffer: Buffer): number {
   return Math.max(1, buffer.toString("latin1").match(/\/Type\s*\/Page\b/g)?.length || 0);
+}
+
+async function waitForRetry(delayMs: number, signal: AbortSignal): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, delayMs);
+    const onAbort = () => {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", onAbort);
+      reject(signal.reason ?? new Error("PDF conversion retry cancelled"));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    if (signal.aborted) onAbort();
+  });
 }
 
 function localSofficePath(): string {
@@ -66,9 +83,18 @@ async function remoteDocxToPdf(docx: Buffer, signal?: AbortSignal): Promise<{ bu
     throw new PdfConversionError("未配置 DOCX_PDF_CONVERTER_URL，正式 PDF 已停止使用旧排版器");
   }
   let lastError: unknown;
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const timeoutSignal = AbortSignal.timeout(PDF_CONVERSION_TIMEOUT_MS);
-    const requestSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+  const timeoutSignal = AbortSignal.timeout(PDF_CONVERSION_TIMEOUT_MS + 90_000);
+  const requestSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+  for (let attempt = 0; attempt <= REMOTE_RETRY_DELAYS_MS.length; attempt += 1) {
+    if (attempt > 0) {
+      try {
+        await waitForRetry(REMOTE_RETRY_DELAYS_MS[attempt - 1], requestSignal);
+      } catch (error) {
+        lastError = error;
+        if (signal?.aborted) throw error;
+        break;
+      }
+    }
     try {
       const response = await fetch(`${env.docxPdfConverterUrl}/convert/docx-to-pdf`, {
         method: "POST",
@@ -80,11 +106,12 @@ async function remoteDocxToPdf(docx: Buffer, signal?: AbortSignal): Promise<{ bu
         signal: requestSignal,
       });
       if (!response.ok) {
-        if ([502, 503, 504].includes(response.status) && attempt === 0) {
-          await new Promise((resolve) => setTimeout(resolve, 5_000));
+        const error = new PdfConversionError(`PDF 转换服务返回异常（HTTP ${response.status}）`);
+        lastError = error;
+        if ([502, 503, 504].includes(response.status) && attempt < REMOTE_RETRY_DELAYS_MS.length) {
           continue;
         }
-        throw new PdfConversionError(`PDF 转换服务返回异常（HTTP ${response.status}）`);
+        throw error;
       }
       const buffer = Buffer.from(await response.arrayBuffer());
       assertPdf(buffer);
@@ -93,12 +120,17 @@ async function remoteDocxToPdf(docx: Buffer, signal?: AbortSignal): Promise<{ bu
     } catch (error) {
       lastError = error;
       if (signal?.aborted) throw error;
-      if (attempt === 0 && !(error instanceof PdfConversionError)) {
-        await new Promise((resolve) => setTimeout(resolve, 5_000));
+      if (timeoutSignal.aborted) {
+        break;
+      }
+      if (attempt < REMOTE_RETRY_DELAYS_MS.length && !(error instanceof PdfConversionError)) {
         continue;
       }
       break;
     }
+  }
+  if (timeoutSignal.aborted) {
+    throw new PdfConversionError("PDF 转换服务连接失败或冷启动超时，请稍后重试");
   }
   if (lastError instanceof PdfConversionError) throw lastError;
   throw new PdfConversionError("PDF 转换服务连接失败或冷启动超时，请稍后重试");
