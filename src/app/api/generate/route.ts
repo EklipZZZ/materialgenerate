@@ -360,8 +360,14 @@ export async function POST(request: NextRequest) {
             };
           const failureKind = failure?.kind || (deadlineExceeded ? "generation_timeout" : documentFailure ? "document_conversion" : undefined);
           const retryable = failure?.retryable ?? (deadlineExceeded || Boolean(documentFailure));
+          const normalizedError = error instanceof Error ? error : new Error(String(error));
           terminal = true;
-          console.error("generation pipeline failed", { stage, ...failureMetadata });
+          console.error("generation pipeline failed", {
+            stage,
+            ...failureMetadata,
+            error_name: normalizedError.name,
+            error_message: normalizedError.message.slice(0, 300),
+          });
           await Promise.all(pendingPersistence);
           await updateGenerationJob(jobId, user.id, {
             status,
