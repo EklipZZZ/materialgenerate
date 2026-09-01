@@ -89,6 +89,10 @@ queued → running → completed
 
 典型阶段包括 `queued`、`init`、`analyze`、`source_code`、`manual`、`convert`、`upload` 和 `complete`。阶段事件同时写入数据库和 SSE 流。
 
+### application_source_archives
+
+保存当前申请可用于材料生成的源码压缩包。每个申请最多一条记录，Storage 对象键使用 ASCII UUID，数据库单独保留用户看到的原始文件名、类型和大小。任务失败时记录和对象继续保留，页面刷新后仍能选择使用；使用该源码成功生成后自动清理。所有查询、替换和删除同时校验 `application_id` 与 `user_id`。
+
 ### generation_records
 
 一次成功或失败的生成结果记录。它关联申请、任务、供应商和模型，并保存生成文件的 Storage object key。历史页面只返回非敏感的摘要字段，实际下载通过短期签名 URL 完成。

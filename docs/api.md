@@ -137,9 +137,25 @@ Content-Type: application/json
 
 ## 源码上传接口
 
+### `GET /api/applications/{id}/source-archive`
+
+返回当前申请已绑定的源码压缩包元数据，不返回私有 Storage object key。没有文件时 `data` 为 `null`。
+
+### `POST /api/applications/{id}/source-archive/upload-url`
+
+为当前申请创建源码压缩包 signed upload 授权。对象键只使用用户、申请和 UUID 等 ASCII 标识，原始文件名仅作为显示元数据保存。
+
+### `POST /api/applications/{id}/source-archive/complete`
+
+直传完成后确认文件存在、路径归属和大小，再将其绑定到申请。替换文件时，新文件确认成功后才删除旧文件。
+
+### `DELETE /api/applications/{id}/source-archive`
+
+删除当前申请绑定的源码压缩包。生成失败不会自动调用该接口；使用源码成功生成材料后，服务端会自动清理该临时源码包。
+
 ### `POST /api/source-upload`
 
-为 ZIP、TAR.GZ 或 TGZ 源码压缩包创建 signed upload 授权。单个源码压缩包上限为 100 MB。上传完成后，客户端将返回的 `path` 作为生成接口的 `sourceObjectKey`。
+兼容源码反馈流程的临时上传接口。生成页面使用申请级 `source-archive` 接口，避免失败重试时丢失源码文件。
 
 ### `POST /api/source-feedback`
 
@@ -180,7 +196,7 @@ Content-Type: application/json
 
 ### `POST /api/generate`
 
-请求体包含 `applicationId`、`llmConfigId`，以及可选的 `tableTemplate`、`skipAnalyze`、`sourceObjectKey` 和 `sourceFileName`。
+请求体包含 `applicationId`、`llmConfigId`、`sourceMode`，以及可选的 `tableTemplate` 和 `skipAnalyze`。`sourceMode` 为 `saved` 时必须存在申请级源码包；为 `none` 时明确根据申请信息生成源码。旧的 `sourceObjectKey` 和 `sourceFileName` 只作为兼容字段保留。
 
 此接口不是普通 JSON 响应，而是 `text/event-stream`。当 `skipAnalyze` 为 `true` 时，启动前会要求主要功能满足 500～1300 字符；事件格式为：
 
@@ -191,7 +207,7 @@ data: {"step":"source_code","message":"正在生成源代码文档…","data":{}
 
 完成事件的 `step` 为 `complete`，其中包含任务 ID、记录 ID、DOCX/PDF 的临时下载地址、申请摘要和 PDF 预检提醒。失败事件的 `step` 为 `error`，包含任务 ID、失败阶段、失败类别和是否建议重试。模型错误只返回脱敏后的类别、HTTP 状态和章节信息，不返回 API Key、完整提示词或上游错误正文。
 
-任务状态也会写入 `generation_jobs` 和 `job_events`，因此页面可以在 SSE 中断后查询最近任务。
+任务状态也会写入 `generation_jobs` 和 `job_events`，因此页面可以在 SSE 中断后查询最近任务。模型连接在尚未返回正文时遇到网络、超时、429 或 5xx 错误会自动重试最多两次，重试事件也会写入任务记录。
 
 ## 生成任务和历史
 

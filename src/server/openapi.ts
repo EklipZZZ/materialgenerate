@@ -17,6 +17,8 @@ import {
   materialUploadSchema,
   pdfRenderRequestSchema,
   sourceUploadSchema,
+  sourceArchiveUploadSchema,
+  sourceArchiveCompleteSchema,
   sourceFeedbackRequestSchema,
   sourceFeedbackResponseSchema,
   llmTestRequestSchema,
@@ -133,6 +135,19 @@ const sourceUploadAuthorizationSchema = z.object({
 }).meta({
   id: "SourceUploadAuthorization",
   description: "源码直传 Supabase Storage 所需的临时授权。",
+});
+
+const sourceArchiveSchema = z.object({
+  id: z.string().uuid(),
+  applicationId: applicationIdSchema,
+  fileName: z.string(),
+  contentType: z.string(),
+  size: z.number().int().positive(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+}).meta({
+  id: "ApplicationSourceArchive",
+  description: "当前申请已绑定、可供失败重试继续使用的源码压缩包。对象键不会返回前端。",
 });
 
 const materialUploadAuthorizationSchema = z.object({
@@ -354,6 +369,38 @@ export function buildOpenApiDocument() {
           summary: "删除申请材料",
           requestParams: { path: materialPath },
           responses: responses(z.null(), "材料已删除"),
+        },
+      },
+      "/api/applications/{id}/source-archive": {
+        get: {
+          tags: ["生成"],
+          summary: "获取申请当前绑定的源码压缩包",
+          requestParams: { path: applicationPath },
+          responses: responses(sourceArchiveSchema.nullable()),
+        },
+        delete: {
+          tags: ["生成"],
+          summary: "删除申请当前绑定的源码压缩包",
+          requestParams: { path: applicationPath },
+          responses: responses(z.null(), "源码压缩包已删除"),
+        },
+      },
+      "/api/applications/{id}/source-archive/upload-url": {
+        post: {
+          tags: ["生成"],
+          summary: "创建持久化源码压缩包上传授权",
+          requestParams: { path: applicationPath },
+          requestBody: jsonRequest(sourceArchiveUploadSchema),
+          responses: responses(sourceUploadAuthorizationSchema, "源码上传授权已创建"),
+        },
+      },
+      "/api/applications/{id}/source-archive/complete": {
+        post: {
+          tags: ["生成"],
+          summary: "确认源码压缩包上传并绑定申请",
+          requestParams: { path: applicationPath },
+          requestBody: jsonRequest(sourceArchiveCompleteSchema),
+          responses: responses(sourceArchiveSchema, "源码压缩包已就绪"),
         },
       },
       "/api/enrich": {

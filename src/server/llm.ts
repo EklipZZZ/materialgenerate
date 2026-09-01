@@ -1,5 +1,6 @@
 import { getServerEnv } from "./config.ts";
 import { buildProviderRequest, type Provider, type ProviderMessage, type ThinkingMode } from "./models.ts";
+import { setTimeout as delay } from "node:timers/promises";
 
 export type ChatMessage = ProviderMessage;
 
@@ -50,6 +51,7 @@ export interface LlmInput {
   thinking?: ThinkingMode;
   operation?: string;
   signal?: AbortSignal;
+  onRetry?: (event: { attempt: number; maxRetries: number; kind: LlmFailureKind; operation?: string }) => void | Promise<void>;
 }
 
 function requestSignal(signal?: AbortSignal): AbortSignal {
@@ -171,25 +173,38 @@ async function callUpstream(input: LlmInput): Promise<Response> {
     throw new LlmError(failureInfo({ ...input, kind: "credentials" }));
   }
   const request = buildProviderRequest(input);
-  try {
-    const response = await fetch(request.url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: "Bearer " + input.apiKey,
-      },
-      body: JSON.stringify(request.body),
-      signal: requestSignal(input.signal),
-    });
-    if (!response.ok) throw await upstreamFailure(input, response);
-    return response;
-  } catch (error) {
-    if (error instanceof LlmError || isCallerAbort(error)) throw error;
-    if (isTimeoutLike(error)) {
-      throw new LlmError(failureInfo({ ...input, kind: "timeout" }));
+  const maxRetries = 2;
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    let failure: LlmError;
+    try {
+      const response = await fetch(request.url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + input.apiKey,
+        },
+        body: JSON.stringify(request.body),
+        signal: requestSignal(input.signal),
+      });
+      if (response.ok) return response;
+      failure = await upstreamFailure(input, response);
+    } catch (error) {
+      if (input.signal?.aborted || (isCallerAbort(error) && !isTimeoutLike(error))) throw error;
+      failure = error instanceof LlmError
+        ? error
+        : new LlmError(failureInfo({ ...input, kind: isTimeoutLike(error) ? "timeout" : "network" }));
     }
-    throw new LlmError(failureInfo({ ...input, kind: "network" }));
+    const automaticallyRetryable = ["network", "timeout", "rate_limit", "server"].includes(failure.info.kind);
+    if (!automaticallyRetryable || attempt >= maxRetries) throw failure;
+    await input.onRetry?.({
+      attempt: attempt + 1,
+      maxRetries,
+      kind: failure.info.kind,
+      operation: input.operation,
+    });
+    await delay(500 * (2 ** attempt), undefined, input.signal ? { signal: input.signal } : undefined);
   }
+  throw new LlmError(failureInfo({ ...input, kind: "unknown" }));
 }
 
 export async function callLlm(input: LlmInput): Promise<string> {

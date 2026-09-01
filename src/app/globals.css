@@ -2098,6 +2098,22 @@ textarea:focus-visible {
   color: var(--app-text);
 }
 
+.generation-source-mode {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  color: var(--app-text-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.generation-source-mode input {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--app-brand);
+}
+
 .generation-notice {
   display: flex;
   align-items: flex-start;

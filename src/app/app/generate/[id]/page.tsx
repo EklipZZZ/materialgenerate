@@ -27,7 +27,12 @@ import { formToMarkdown } from "@/lib/copyright-form";
 import { getApplicationProgress } from "@/lib/application-progress";
 import { loadPersistedByok } from "@/lib/llm-config-client";
 import { getApplication, type ApplicationRecord } from "@/lib/softreg-api";
-import { uploadSourceFile } from "@/lib/source-upload";
+import {
+  deleteSavedSourceArchive,
+  getSavedSourceArchive,
+  type SavedSourceArchive,
+  uploadSavedSourceArchive,
+} from "@/lib/source-upload";
 
 interface GenerationResult {
   jobId?: string;
@@ -97,6 +102,9 @@ export default function GenerationDetailPage() {
   const [application, setApplication] = useState<ApplicationRecord | null>(null);
   const [byok, setByok] = useState<ByokConfig | null>(null);
   const [sourceCodeFile, setSourceCodeFile] = useState<File | null>(null);
+  const [savedSourceArchive, setSavedSourceArchive] = useState<SavedSourceArchive | null>(null);
+  const [useSourceArchive, setUseSourceArchive] = useState(false);
+  const [sourceUploading, setSourceUploading] = useState(false);
   const [currentStep, setCurrentStep] = useState("");
   const [message, setMessage] = useState("");
   const [result, setResult] = useState<GenerationResult | null>(null);
@@ -111,12 +119,14 @@ export default function GenerationDetailPage() {
   useEffect(() => {
     if (!id) return;
     let active = true;
-    Promise.all([getApplication(id), loadPersistedByok(), fetchLatestGenerationJob(id)])
-      .then(([record, storedByok, job]) => {
+    Promise.all([getApplication(id), loadPersistedByok(), fetchLatestGenerationJob(id), getSavedSourceArchive(id)])
+      .then(([record, storedByok, job, archive]) => {
         if (!active) return;
         setApplication(record);
         setByok(storedByok);
         setLatestJob(job);
+        setSavedSourceArchive(archive);
+        setUseSourceArchive(Boolean(archive));
         if (job && (job.status === "failed" || job.status === "cancelled")) {
           setCurrentStep(job.current_step);
           setMessage(job.error_message || "上一次生成任务未完成");
@@ -140,6 +150,38 @@ export default function GenerationDetailPage() {
       abortRef.current?.abort();
     };
   }, [id]);
+
+  async function selectSourceArchive(file: File | null) {
+    if (!file || !id) return;
+    setSourceCodeFile(file);
+    setSourceUploading(true);
+    setError(null);
+    try {
+      const archive = await uploadSavedSourceArchive(id, file);
+      setSavedSourceArchive(archive);
+      setUseSourceArchive(true);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "源码压缩包上传失败");
+    } finally {
+      setSourceCodeFile(null);
+      setSourceUploading(false);
+    }
+  }
+
+  async function removeSourceArchive() {
+    if (!id || !savedSourceArchive) return;
+    setSourceUploading(true);
+    setError(null);
+    try {
+      await deleteSavedSourceArchive(id);
+      setSavedSourceArchive(null);
+      setUseSourceArchive(false);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "源码压缩包删除失败");
+    } finally {
+      setSourceUploading(false);
+    }
+  }
 
   useEffect(() => {
     if (!id || !latestStatus || !["queued", "running"].includes(latestStatus)) return;
@@ -171,6 +213,10 @@ export default function GenerationDetailPage() {
       setError("请先在设置中保存 AI 模型配置");
       return;
     }
+    if (useSourceArchive && !savedSourceArchive) {
+      setError("本次选择使用源码压缩包，请先上传文件并等待就绪");
+      return;
+    }
 
     setGenerating(true);
     setError(null);
@@ -182,12 +228,6 @@ export default function GenerationDetailPage() {
     abortRef.current = controller;
 
     try {
-      let sourceObjectKey: string | undefined;
-      if (sourceCodeFile) {
-        setMessage("正在上传源码压缩包…");
-        sourceObjectKey = (await uploadSourceFile(sourceCodeFile)).path;
-      }
-
       const response = await authorizedFetch(apiEndpoint("/api/generate"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -196,8 +236,7 @@ export default function GenerationDetailPage() {
           llmConfigId: byok.id,
           tableTemplate: formToMarkdown(application),
           skipAnalyze: true,
-          sourceObjectKey,
-          sourceFileName: sourceCodeFile?.name,
+          sourceMode: useSourceArchive ? "saved" : "none",
         }),
         signal: controller.signal,
       });
@@ -250,6 +289,10 @@ export default function GenerationDetailPage() {
       setResult(finalResult);
       if (finalResult?.jobId) {
         setLatestJob({ id: finalResult.jobId, status: "completed", current_step: "complete", progress: 100 });
+        if (useSourceArchive) {
+          setSavedSourceArchive(null);
+          setUseSourceArchive(false);
+        }
         setMaterialRefresh((current) => current + 1);
       } else {
         const job = await fetchLatestGenerationJob(id);
@@ -323,20 +366,37 @@ export default function GenerationDetailPage() {
 
               <div className="generation-field generation-field--spaced">
                 <span className="form-label">源码压缩包 <small className="form-hint">可选</small></span>
-                <label className={`upload-zone ${sourceCodeFile ? "upload-zone--selected" : ""}`} htmlFor="source-code-file">
+                <label className={`upload-zone ${sourceCodeFile || savedSourceArchive ? "upload-zone--selected" : ""}`} htmlFor="source-code-file">
                   <FileArchive size={20} />
-                  <strong>{sourceCodeFile ? sourceCodeFile.name : "选择源码压缩包"}</strong>
-                  <span>{sourceCodeFile ? `${Math.ceil(sourceCodeFile.size / 1024 / 1024)} MB · 点击重新选择` : "支持 ZIP、TAR.GZ，最大 100 MB"}</span>
+                  <strong>{sourceUploading ? `正在上传 ${sourceCodeFile?.name || "源码压缩包"}…` : savedSourceArchive?.fileName || "选择源码压缩包"}</strong>
+                  <span>{savedSourceArchive
+                    ? `${Math.ceil(savedSourceArchive.size / 1024 / 1024)} MB · 已就绪，失败后可直接重试`
+                    : sourceUploading ? "上传完成前不能开始生成" : "支持 ZIP、TAR.GZ，最大 100 MB"}</span>
                   <input
                     id="source-code-file"
                     className="sr-only"
                     type="file"
                     accept=".zip,.tar.gz,.tgz,application/zip,application/gzip"
-                    onChange={(event) => setSourceCodeFile(event.target.files?.[0] ?? null)}
-                    disabled={generating}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0] ?? null;
+                      event.target.value = "";
+                      void selectSourceArchive(file);
+                    }}
+                    disabled={generating || sourceUploading}
                   />
                 </label>
-                {sourceCodeFile && !generating && <button type="button" className="generation-file-clear" onClick={() => setSourceCodeFile(null)}><X size={13} />移除文件</button>}
+                {savedSourceArchive && !generating && !sourceUploading && <button type="button" className="generation-file-clear" onClick={() => void removeSourceArchive()}><X size={13} />移除文件</button>}
+                <label className="generation-source-mode">
+                  <input
+                    type="checkbox"
+                    checked={useSourceArchive}
+                    onChange={(event) => setUseSourceArchive(event.target.checked)}
+                    disabled={generating || sourceUploading || !savedSourceArchive}
+                  />
+                  <span>{useSourceArchive
+                    ? `本次将使用 ${savedSourceArchive?.fileName || "已上传源码压缩包"}`
+                    : "本次不使用源码压缩包，将根据申请信息生成源码"}</span>
+                </label>
               </div>
 
               {!byok?.id && (
@@ -348,7 +408,7 @@ export default function GenerationDetailPage() {
               )}
 
               <div className="generation-actions">
-                <Button type="button" onClick={() => void generate()} disabled={generating || !byok?.id || latestStatus === "queued" || latestStatus === "running"}>
+                <Button type="button" onClick={() => void generate()} disabled={generating || sourceUploading || (useSourceArchive && !savedSourceArchive) || !byok?.id || latestStatus === "queued" || latestStatus === "running"}>
                   {generating ? <LoaderCircle className="app-spin" size={16} /> : <Play size={16} />}
                   {generating ? "生成中…" : "开始生成"}
                 </Button>

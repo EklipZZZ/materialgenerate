@@ -13,6 +13,8 @@ import { generateRequestSchema } from "@/server/api-contracts";
 import { validateCopyrightTextFields } from "@/lib/copyright-constraints";
 import { getLlmFailureInfo } from "@/server/llm";
 import { DocumentConversionError } from "@/server/converter";
+import { generationObjectKeys } from "@/server/generation-output";
+import { clearOwnedSourceArchive, getOwnedSourceArchive } from "@/server/source-archives";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -86,6 +88,7 @@ export async function POST(request: NextRequest) {
   let parsed: z.infer<typeof bodySchema>;
   let application;
   let llmConfig;
+  let savedSourceArchive: Awaited<ReturnType<typeof getOwnedSourceArchive>> = null;
   try {
     user = await requireUser(request);
     const body = bodySchema.safeParse(await request.json());
@@ -97,6 +100,11 @@ export async function POST(request: NextRequest) {
     if (!application) return fail(404, "申请不存在");
     if (parsed.sourceObjectKey && !parsed.sourceObjectKey.startsWith(`incoming/${user.id}/`)) {
       return fail(400, "源码文件无效");
+    }
+    if (parsed.sourceMode && parsed.sourceObjectKey) return fail(400, "不能同时使用持久化源码和临时源码参数");
+    if (parsed.sourceMode === "saved") {
+      savedSourceArchive = await getOwnedSourceArchive(application.id, user.id);
+      if (!savedSourceArchive) return fail(400, "本次选择使用源码压缩包，但当前申请没有已上传的源码文件");
     }
     if (parsed.skipAnalyze) {
       const effective = effectiveApplication(application).effective_form as Record<string, unknown>;
@@ -150,8 +158,11 @@ export async function POST(request: NextRequest) {
         if (signature !== lastPersistedSignature || now - lastPersistedAt > 1_000) {
           lastPersistedAt = now;
           lastPersistedSignature = signature;
+          const retryMetadata = data && typeof data === "object" && "retryAttempt" in data
+            ? data as Record<string, unknown>
+            : undefined;
           pendingPersistence.push(Promise.all([
-            recordJobEvent({ jobId, userId: user.id, step, message, progress }),
+            recordJobEvent({ jobId, userId: user.id, step, message, progress, metadata: retryMetadata }),
             updateGenerationJob(jobId, user.id, {
               current_step: step,
               progress,
@@ -179,7 +190,7 @@ export async function POST(request: NextRequest) {
           }).eq("id", application.id).eq("user_id", user.id);
 
           let sourceBuffer: Buffer | undefined;
-          const sourceKey = parsed.sourceObjectKey;
+          const sourceKey = parsed.sourceMode === "saved" ? savedSourceArchive?.objectKey : parsed.sourceObjectKey;
           if (sourceKey) {
             stage = "source-download";
             emit("init", "正在读取已上传的源代码压缩包…");
@@ -195,7 +206,9 @@ export async function POST(request: NextRequest) {
             model: llmConfig.model,
             apiKey: llmConfig.apiKey,
             sourceBuffer,
-            sourceFileName: parsed.sourceFileName || (sourceKey ? sourceNameFromKey(sourceKey) : undefined),
+            sourceFileName: parsed.sourceMode === "saved"
+              ? savedSourceArchive?.archive.fileName
+              : parsed.sourceFileName || (sourceKey ? sourceNameFromKey(sourceKey) : undefined),
             requestUrl: request.url,
             signal: abortController.signal,
             emit: (event) => {
@@ -207,12 +220,14 @@ export async function POST(request: NextRequest) {
           emit("upload", "正在上传 DOCX、PDF 和摘要材料…");
           const prefix = `generations/${user.id}/${application.id}/${Date.now()}-${randomUUID()}`;
           const softwareName = safeName(generated.softwareName);
-          const sourceObjectKey = `${prefix}/${softwareName}-source-code.docx`;
-          const sourcePdfObjectKey = `${prefix}/${softwareName}-source-code.pdf`;
-          const manualObjectKey = `${prefix}/${softwareName}-user-manual.docx`;
-          const manualPdfObjectKey = `${prefix}/${softwareName}-user-manual.pdf`;
-          const summaryPdfObjectKey = `${prefix}/${softwareName}-application-summary.pdf`;
-          const collectionObjectKey = `${prefix}/${softwareName}-collection-form.md`;
+          const {
+            sourceObjectKey,
+            sourcePdfObjectKey,
+            manualObjectKey,
+            manualPdfObjectKey,
+            summaryPdfObjectKey,
+            collectionObjectKey,
+          } = generationObjectKeys(prefix);
           uploadedKeys.push(
             sourceObjectKey,
             sourcePdfObjectKey,
@@ -282,6 +297,11 @@ export async function POST(request: NextRequest) {
             progress: 100,
             completed_at: new Date().toISOString(),
           });
+          if (parsed.sourceMode === "saved") {
+            await clearOwnedSourceArchive(application.id, user.id).catch((error) => {
+              console.warn("completed source archive cleanup failed", { message: error instanceof Error ? error.message : "unknown" });
+            });
+          }
           emit("complete", "生成完成", {
             jobId,
             sourceCodeDocx,

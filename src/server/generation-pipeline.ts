@@ -106,6 +106,13 @@ export async function generateMaterials(input: GenerationInput): Promise<Generat
   const { application, emit, signal } = input;
   throwIfAborted(signal);
   let sourceInfo: Awaited<ReturnType<typeof extractSourceCode>> | null = null;
+  const retryReporter = (step: string, label: string) => (event: { attempt: number; maxRetries: number; kind: string; operation?: string }) => {
+    emit({
+      step,
+      message: `${label}连接暂时异常，正在自动重试（${event.attempt}/${event.maxRetries}）…`,
+      data: { retryAttempt: event.attempt, maxRetries: event.maxRetries, failureKind: event.kind, operation: event.operation },
+    });
+  };
   if (input.sourceBuffer && input.sourceFileName) {
     emit({ step: "init", message: "正在提取源代码…" });
     sourceInfo = await extractSourceCode(input.sourceBuffer, input.sourceFileName, (message) => {
@@ -143,6 +150,7 @@ export async function generateMaterials(input: GenerationInput): Promise<Generat
       thinking: configuredThinking(templateAnalysisConfig.config),
       operation: "analyze",
       signal,
+      onRetry: retryReporter("analyze", "采集表模型"),
     }, (chunk) => {
       analyzed += chunk;
       emit({ step: "analyze", message: "正在生成完整采集表…" });
@@ -179,6 +187,7 @@ export async function generateMaterials(input: GenerationInput): Promise<Generat
         thinking: configuredThinking(sourceCodeConfig.config),
         operation: `source-code/${module.name}`,
         signal: batchSignal,
+        onRetry: retryReporter("source_code", module.description),
       }, (chunk) => {
         content += chunk;
         emit({ step: "source_code", message: `正在生成${module.description}…` });
@@ -212,6 +221,7 @@ export async function generateMaterials(input: GenerationInput): Promise<Generat
       thinking: configuredThinking(documentationConfig.config),
       operation: `manual/${module.name}`,
       signal: batchSignal,
+      onRetry: retryReporter("manual", module.description),
     }, (chunk) => {
       content += chunk;
       emit({ step: "manual", message: `正在生成${module.description}…` });

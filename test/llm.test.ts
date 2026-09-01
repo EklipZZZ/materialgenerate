@@ -144,3 +144,33 @@ test("model policy rejects arbitrary providers and models", async () => {
     apiKey: "test-provider-key",
   }).success, false);
 });
+
+test("LLM retries transient network failures before any response content", async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  const retries: number[] = [];
+  globalThis.fetch = (async () => {
+    calls += 1;
+    if (calls < 3) throw new TypeError("temporary network failure");
+    return new Response(JSON.stringify({ choices: [{ message: { content: "连接恢复" } }] }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  try {
+    const content = await callLlm({
+      provider: "deepseek",
+      model: "deepseek-v4-flash",
+      apiKey: "test-provider-key",
+      messages: [{ role: "user", content: "test" }],
+      operation: "manual/overview",
+      onRetry: ({ attempt }) => { retries.push(attempt); },
+    });
+    assert.equal(content, "连接恢复");
+    assert.equal(calls, 3);
+    assert.deepEqual(retries, [1, 2]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

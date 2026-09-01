@@ -76,6 +76,10 @@ export async function DELETE(request: NextRequest, context: Context) {
       .select("object_key")
       .eq("application_id", id).eq("user_id", user.id);
     if (materials.error) return fail(500, "读取关联材料失败");
+    const sourceArchive = await getSupabaseAdmin().from("application_source_archives")
+      .select("object_key")
+      .eq("application_id", id).eq("user_id", user.id).maybeSingle();
+    if (sourceArchive.error) return fail(500, "读取关联源码压缩包失败");
     const result = await getSupabaseAdmin().from("applications")
       .delete().eq("id", id).eq("user_id", user.id).select("id");
     if (result.error) return fail(500, "删除申请失败");
@@ -87,7 +91,7 @@ export async function DELETE(request: NextRequest, context: Context) {
       record.source_code_pdf_object_key,
       record.user_manual_pdf_object_key,
       record.application_summary_pdf_object_key,
-    ]).concat((materials.data || []).map((material) => material.object_key)).filter((key): key is string => typeof key === "string" && key.length > 0);
+    ]).concat((materials.data || []).map((material) => material.object_key), sourceArchive.data?.object_key).filter((key): key is string => typeof key === "string" && key.length > 0);
     if (keys.length) void deleteObjects(keys).catch(() => undefined);
     return ok(null, "删除成功");
   } catch (error) {

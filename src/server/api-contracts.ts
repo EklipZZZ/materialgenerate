@@ -131,6 +131,21 @@ export const sourceUploadSchema = z.object({
   description: "源码 ZIP、TAR.GZ 或 TGZ 压缩包的上传授权请求。",
 });
 
+export const sourceArchiveUploadSchema = sourceUploadSchema.meta({
+  id: "SourceArchiveUploadRequest",
+  description: "为指定申请创建可持久化源码压缩包的上传授权。",
+});
+
+export const sourceArchiveCompleteSchema = z.object({
+  path: z.string().trim().min(1).max(500),
+  fileName: z.string().trim().min(1).max(200),
+  contentType: z.string().trim().max(120).optional(),
+  size: z.number().int().positive().max(100 * 1024 * 1024),
+}).meta({
+  id: "SourceArchiveCompleteRequest",
+  description: "确认源码压缩包已经直传完成并将其绑定到申请。",
+});
+
 export const sourceFeedbackFieldSchema = z.enum(SOURCE_FEEDBACK_FIELDS);
 
 export const sourceFeedbackRequestSchema = z.object({
@@ -178,6 +193,7 @@ export const generateRequestSchema = z.object({
   llmConfigId: llmConfigIdSchema,
   tableTemplate: z.string().max(300_000).optional().default(""),
   skipAnalyze: z.boolean().optional().default(false),
+  sourceMode: z.enum(["none", "saved"]).optional(),
   sourceObjectKey: z.string().trim().max(500).optional(),
   sourceFileName: z.string().trim().max(200).optional(),
 }).meta({
