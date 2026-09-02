@@ -66,6 +66,14 @@ function requiredMaterialKinds(developmentMethod: string): MaterialKind[] {
   return kinds;
 }
 
+function filingMaterialKinds(developmentMethod: string): MaterialKind[] {
+  const kinds: MaterialKind[] = ["source_code_pdf", "user_manual_pdf"];
+  if (developmentMethod === "cooperative") kinds.push("cooperation_agreement");
+  if (developmentMethod === "commissioned") kinds.push("commission_agreement");
+  if (developmentMethod === "assigned_task") kinds.push("task_order");
+  return kinds;
+}
+
 function materialReady(material: ApplicationMaterial): boolean {
   return material.status === "generated" || material.status === "uploaded";
 }
@@ -172,12 +180,20 @@ export async function listOwnedMaterials(applicationId: string, userId: string, 
     const material = materials.find((item) => item.kind === kind);
     return Boolean(material && materialReady(material));
   }).length;
+  const filingRequired = filingMaterialKinds(developmentMethod);
+  const filingReadyCount = filingRequired.filter((kind) => {
+    const material = materials.find((item) => item.kind === kind);
+    return Boolean(material && materialReady(material));
+  }).length;
   return {
     materials,
     summary: {
       complete: readyCount === required.length,
       requiredCount: required.length,
       readyCount,
+      filingReady: filingReadyCount === filingRequired.length,
+      filingRequiredCount: filingRequired.length,
+      filingReadyCount,
     },
   };
 }

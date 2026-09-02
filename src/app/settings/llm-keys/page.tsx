@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, KeyRound, LockKeyhole } from "lucide-react";
+import { ArrowLeft, ContactRound, KeyRound, LockKeyhole } from "lucide-react";
 import { AppShell, PageHeader, Panel } from "@/components/app-shell";
 import { ByokPanel } from "@/components/byok-panel";
 import type { ByokConfig } from "@/lib/byok";
@@ -22,7 +22,8 @@ export default function LlmKeysPage() {
 
       <div className="settings-layout">
         <nav className="settings-nav" aria-label="设置导航">
-          <span className="settings-nav__item settings-nav__item--active"><KeyRound size={14} />AI 配置</span>
+          <Link className="settings-nav__item settings-nav__item--active" href="/settings/llm-keys"><KeyRound size={14} />AI 配置</Link>
+          <Link className="settings-nav__item" href="/settings/filing-profile"><ContactRound size={14} />官网填报资料</Link>
           <div className="settings-nav__note"><LockKeyhole size={14} /><span>API Key 使用服务端加密保存，页面不会展示完整凭据。</span></div>
         </nav>
         <Panel>

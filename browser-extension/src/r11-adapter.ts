@@ -1,4 +1,5 @@
 import type { CopyrightFormData, CopyrightHolder } from "../../src/lib/copyright-form.ts";
+import type { FilingProfile } from "../../src/lib/filing-profile.ts";
 import type { MaterialKind } from "../../src/lib/materials.ts";
 
 export type AdapterErrorCode =
@@ -30,11 +31,6 @@ const textFieldAliases: Partial<Record<keyof CopyrightFormData, string[]>> = {
   first_publication_date: ["首次发表日期", "发表日期"],
   first_publication_country: ["首次发表国家", "发表国家"],
   first_publication_city: ["首次发表城市", "发表城市"],
-  applicant_address: ["申请人地址", "联系地址", "通讯地址"],
-  postal_code: ["邮政编码", "邮编"],
-  contact_name: ["联系人", "联系代表"],
-  contact_phone: ["联系电话", "联系人电话", "手机"],
-  contact_email: ["电子邮箱", "邮箱", "电子邮件"],
   development_hardware: ["开发的硬件环境", "开发硬件环境"],
   runtime_hardware: ["运行的硬件环境", "运行硬件环境"],
   development_os: ["开发操作系统"],
@@ -48,6 +44,13 @@ const textFieldAliases: Partial<Record<keyof CopyrightFormData, string[]>> = {
   main_functions: ["软件的主要功能", "主要功能"],
   technical_features: ["软件技术特点", "技术特点"],
 };
+
+const filingProfileAliases: Array<[keyof FilingProfile, readonly string[]]> = [
+  ["applicant_address", ["申请人地址", "联系地址", "通讯地址"]],
+  ["postal_code", ["邮政编码", "邮编"]],
+  ["contact_name", ["联系人", "联系代表"]],
+  ["contact_phone", ["联系电话", "联系人电话", "手机"]],
+];
 
 const holderAliases = {
   holder_type: ["著作权人类型", "权利人类型", "主体类型"],
@@ -145,6 +148,16 @@ export function findUniqueSemanticControl(root: ParentNode, aliases: readonly st
   const candidates = uniqueElements(Array.from(root.querySelectorAll(selector)).filter(isVisible));
   const scored = candidates.map((element) => ({ element, score: scoreText(element, aliases) })).filter((item) => item.score > 0);
   if (!scored.length) throw new AdapterError("field_not_found", aliases.join("/"));
+  const max = Math.max(...scored.map((item) => item.score));
+  const winners = scored.filter((item) => item.score === max).map((item) => item.element);
+  if (winners.length !== 1) throw new AdapterError("field_ambiguous", aliases.join("/"));
+  return winners[0] as HTMLElement;
+}
+
+function findUniqueSemanticControlIfPresent(root: ParentNode, aliases: readonly string[], selector = TEXT_CONTROL_SELECTOR): HTMLElement | null {
+  const candidates = uniqueElements(Array.from(root.querySelectorAll(selector)).filter(isVisible));
+  const scored = candidates.map((element) => ({ element, score: scoreText(element, aliases) })).filter((item) => item.score > 0);
+  if (!scored.length) return null;
   const max = Math.max(...scored.map((item) => item.score));
   const winners = scored.filter((item) => item.score === max).map((item) => item.element);
   if (winners.length !== 1) throw new AdapterError("field_ambiguous", aliases.join("/"));
@@ -326,7 +339,6 @@ export class R11Adapter {
     const root = this.root;
     const textFields: Array<keyof CopyrightFormData> = [
       "software_full_name", "software_short_name", "version", "software_category", "development_date",
-      "applicant_address", "postal_code", "contact_name", "contact_phone", "contact_email",
       "development_hardware", "runtime_hardware", "development_os", "development_tools",
       "runtime_platform", "runtime_environment", "programming_language", "source_code_lines",
       "development_purpose", "target_industry", "main_functions", "technical_features",
@@ -357,6 +369,22 @@ export class R11Adapter {
       fillText(root, textFieldAliases.first_publication_city || [], form.first_publication_city);
     }
     await this.fillHolders(form.copyright_holders);
+  }
+
+  fillFilingProfile(profile: FilingProfile): boolean {
+    const controls = filingProfileAliases.map(([field, aliases]) => ({
+      field,
+      aliases,
+      control: findUniqueSemanticControlIfPresent(this.root, aliases),
+    }));
+    if (controls.every((item) => !item.control)) return false;
+    if (controls.some((item) => !item.control)) {
+      throw new AdapterError("portal_structure_changed", "官网申请人资料字段未完整出现");
+    }
+    for (const item of controls) {
+      fillText(this.root, item.aliases, profile[item.field]);
+    }
+    return true;
   }
 
   private async fillHolders(holders: CopyrightHolder[]): Promise<void> {

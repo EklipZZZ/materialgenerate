@@ -1,10 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { sourceArchiveCompleteSchema, sourceArchiveUploadSchema } from "./api-contracts.ts";
+import { sourceArchiveCompleteSchema, sourceArchiveReviewSchema, sourceArchiveUploadSchema } from "./api-contracts.ts";
 import { getSupabaseAdmin } from "./config";
+import { ApiError } from "./http";
 import { assertObjectSize, createSignedUpload, deleteObjects } from "./storage";
 
 const MAX_SOURCE_ARCHIVE_BYTES = 100 * 1024 * 1024;
+
+export type SourceReviewStatus = "pending" | "confirmed" | "skipped";
 
 export interface SourceArchive {
   id: string;
@@ -14,6 +17,10 @@ export interface SourceArchive {
   size: number;
   createdAt: string;
   updatedAt: string;
+  reviewStatus: SourceReviewStatus;
+  reviewedApplicationUpdatedAt: string | null;
+  reviewedSourceUpdatedAt: string | null;
+  reviewedAt: string | null;
 }
 
 function archiveExtension(fileName: string): ".zip" | ".tar.gz" | ".tgz" | null {
@@ -37,6 +44,10 @@ function mapArchive(row: Record<string, unknown>): SourceArchive {
     size: Number(row.size_bytes),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
+    reviewStatus: row.review_status === "confirmed" || row.review_status === "skipped" ? row.review_status : "pending",
+    reviewedApplicationUpdatedAt: typeof row.reviewed_application_updated_at === "string" ? row.reviewed_application_updated_at : null,
+    reviewedSourceUpdatedAt: typeof row.reviewed_source_updated_at === "string" ? row.reviewed_source_updated_at : null,
+    reviewedAt: typeof row.reviewed_at === "string" ? row.reviewed_at : null,
   };
 }
 
@@ -80,6 +91,10 @@ export async function completeSourceArchiveUpload(
     file_name: displayFileName(input.fileName),
     mime_type: input.contentType || "application/octet-stream",
     size_bytes: input.size,
+    review_status: "pending",
+    reviewed_application_updated_at: null,
+    reviewed_source_updated_at: null,
+    reviewed_at: null,
     updated_at: now,
   }, { onConflict: "application_id" }).select("*").single();
   if (result.error || !result.data) {
@@ -89,6 +104,64 @@ export async function completeSourceArchiveUpload(
   if (previous?.objectKey && previous.objectKey !== input.path) {
     await deleteObjects([previous.objectKey]).catch((error) => console.warn("old source archive cleanup failed", { message: error instanceof Error ? error.message : "unknown" }));
   }
+  return mapArchive(result.data as Record<string, unknown>);
+}
+
+export function isSourceArchiveReviewCurrent(archive: SourceArchive, applicationUpdatedAt: string | undefined): boolean {
+  return Boolean(applicationUpdatedAt
+    && archive.reviewStatus !== "pending"
+    && archive.reviewedApplicationUpdatedAt === applicationUpdatedAt
+    && archive.reviewedSourceUpdatedAt === archive.updatedAt);
+}
+
+export async function invalidateOwnedSourceArchiveReview(applicationId: string, userId: string): Promise<void> {
+  const result = await getSupabaseAdmin().from("application_source_archives")
+    .update({
+      review_status: "pending",
+      reviewed_application_updated_at: null,
+      reviewed_source_updated_at: null,
+      reviewed_at: null,
+    })
+    .eq("application_id", applicationId)
+    .eq("user_id", userId);
+  if (result.error) throw new Error("源码核对状态失效处理失败");
+}
+
+export async function reviewOwnedSourceArchive(
+  applicationId: string,
+  userId: string,
+  input: z.infer<typeof sourceArchiveReviewSchema>,
+): Promise<SourceArchive> {
+  const current = await getOwnedSourceArchive(applicationId, userId);
+  if (!current) throw new ApiError(404, "请先上传源码压缩包");
+
+  const application = await getSupabaseAdmin().from("applications")
+    .select("updated_at")
+    .eq("id", applicationId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (application.error) throw new Error("申请版本查询失败");
+  if (!application.data) throw new ApiError(404, "申请不存在");
+  if (String(application.data.updated_at) !== input.applicationUpdatedAt || current.archive.updatedAt !== input.sourceUpdatedAt) {
+    throw new ApiError(409, "申请或源码已变化，请重新核对");
+  }
+
+  const now = new Date().toISOString();
+  const result = await getSupabaseAdmin().from("application_source_archives")
+    .update({
+      review_status: input.decision,
+      reviewed_application_updated_at: input.applicationUpdatedAt,
+      reviewed_source_updated_at: input.sourceUpdatedAt,
+      reviewed_at: now,
+      updated_at: input.sourceUpdatedAt,
+    })
+    .eq("id", current.archive.id)
+    .eq("application_id", applicationId)
+    .eq("user_id", userId)
+    .eq("updated_at", input.sourceUpdatedAt)
+    .select("*")
+    .single();
+  if (result.error || !result.data) throw new ApiError(409, "源码已变化，请重新核对");
   return mapArchive(result.data as Record<string, unknown>);
 }
 

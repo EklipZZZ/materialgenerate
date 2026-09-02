@@ -16,7 +16,6 @@ import {
 import { AppShell, PageHeader, Panel, StatusBadge } from "@/components/app-shell";
 import { useAuth } from "@/components/auth-provider";
 import { CopyrightFormEditor } from "@/components/copyright-form-editor";
-import { FilingPanel } from "@/components/filing-panel";
 import { SourceFeedbackPanel } from "@/components/source-feedback-panel";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,7 +28,7 @@ import { apiEndpoint } from "@/lib/api-base";
 import { getApplicationProgress, getApplicationStatus } from "@/lib/application-progress";
 import { type ByokConfig } from "@/lib/byok";
 import { authorizedFetch } from "@/lib/auth";
-import { formToEnrichmentDraft, recordToFormData, type CopyrightFormData, validateCopyrightForm } from "@/lib/copyright-form";
+import { formToEnrichmentDraft, formToUpdatePayload, recordToFormData, type CopyrightFormData, validateCopyrightForm } from "@/lib/copyright-form";
 import { loadPersistedByok } from "@/lib/llm-config-client";
 import {
   deleteApplication,
@@ -37,6 +36,7 @@ import {
   updateApplication,
   type ApplicationRecord,
 } from "@/lib/softreg-api";
+import { reviewSavedSourceArchive } from "@/lib/source-upload";
 
 export default function ApplicationEditPage() {
   const { user } = useAuth();
@@ -48,6 +48,7 @@ export default function ApplicationEditPage() {
   const [byok, setByok] = useState<ByokConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [reviewSaving, setReviewSaving] = useState(false);
   const [enriching, setEnriching] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -134,6 +135,35 @@ export default function ApplicationEditPage() {
     }
   }
 
+  async function saveSourceReview(
+    patch: Partial<CopyrightFormData>,
+    decision: "confirmed" | "skipped",
+    sourceUpdatedAt: string,
+  ) {
+    if (!id || !form) return;
+    const nextForm = { ...form, ...patch };
+    if (!nextForm.software_full_name.trim()) {
+      throw new Error("请先填写软件全称");
+    }
+    const validationErrors = validateCopyrightForm(nextForm);
+    if (validationErrors.length) throw new Error(validationErrors[0]);
+    setReviewSaving(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const updated = await updateApplication(id, nextForm);
+      await reviewSavedSourceArchive(id, {
+        decision,
+        applicationUpdatedAt: updated.updated_at,
+        sourceUpdatedAt,
+      });
+      setApplication(updated);
+      setForm(updated);
+    } finally {
+      setReviewSaving(false);
+    }
+  }
+
   async function remove() {
     if (!id || !window.confirm("确认删除这条申请？生成记录和关联文件也会一并移除。")) return;
     setDeleting(true);
@@ -149,7 +179,8 @@ export default function ApplicationEditPage() {
 
   const progress = form ? getApplicationProgress(form) : null;
   const status = application?.status === "completed" ? "complete" : form ? getApplicationStatus(form) : "draft";
-  const busy = saving || enriching || deleting;
+  const busy = saving || reviewSaving || enriching || deleting;
+  const applicationSaved = Boolean(application && form && JSON.stringify(formToUpdatePayload(application)) === JSON.stringify(formToUpdatePayload(form)));
 
   return (
     <AppShell>
@@ -200,12 +231,10 @@ export default function ApplicationEditPage() {
               <SourceFeedbackPanel
                 applicationId={id}
                 llmConfigId={byok?.id}
+                applicationUpdatedAt={form.updated_at}
+                applicationSaved={applicationSaved}
                 disabled={busy}
-                onApply={(patch) => {
-                  setForm((current) => current ? { ...current, ...patch } : current);
-                  setError(null);
-                  setMessage("源码反馈已应用到表单草稿，请检查后保存");
-                }}
+                onSaveReview={saveSourceReview}
               />
               <div className="form-actions form-actions--sticky">
                 <Button type="button" variant="outline" onClick={() => void enrich()} disabled={busy}>
@@ -246,14 +275,6 @@ export default function ApplicationEditPage() {
                 {!byok?.id && <p className="form-hint app-side-hint">生成前需要先在设置中保存 AI 模型配置。</p>}
                 {!byok?.id && <Link className="app-inline-link" href="/settings/llm-keys">前往 AI 配置设置 <ArrowLeft size={13} className="app-arrow-forward" /></Link>}
               </div>
-            </Panel>
-            <Panel>
-              <FilingPanel
-                applicationId={id}
-                holderCount={form.copyright_holders.length}
-                developmentMethod={form.development_method}
-                softwareName={form.software_full_name}
-              />
             </Panel>
           </div>
         </div>

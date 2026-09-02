@@ -14,6 +14,7 @@ import {
   filingJobEventSchema,
   filingJobIdSchema,
   filingJobResumeSchema,
+  filingProfileInputSchema,
   llmConfigIdSchema,
   llmConfigWriteSchema,
   materialCompleteSchema,
@@ -21,9 +22,9 @@ import {
   materialKindSchema,
   materialUploadSchema,
   pdfRenderRequestSchema,
-  sourceUploadSchema,
   sourceArchiveUploadSchema,
   sourceArchiveCompleteSchema,
+  sourceArchiveReviewSchema,
   sourceFeedbackRequestSchema,
   sourceFeedbackResponseSchema,
   llmTestRequestSchema,
@@ -78,6 +79,9 @@ const materialsResponseSchema = z.object({
     complete: z.boolean(),
     requiredCount: z.number().int(),
     readyCount: z.number().int(),
+    filingReady: z.boolean(),
+    filingRequiredCount: z.number().int(),
+    filingReadyCount: z.number().int(),
   }),
 }).meta({
   id: "MaterialsResponse",
@@ -155,12 +159,23 @@ const filingMaterialManifestSchema = z.object({
   downloadUrl: z.string().url(),
 }).meta({ id: "FilingMaterialManifest" });
 
+const filingProfileSchema = z.object({
+  applicant_address: z.string(),
+  postal_code: z.string(),
+  contact_name: z.string(),
+  contact_phone: z.string(),
+}).meta({
+  id: "FilingProfile",
+  description: "当前用户维护的官网填报默认资料，不包含电子邮箱。",
+});
+
 const filingManifestSchema = z.object({
   jobId: filingJobIdSchema,
   targetUrl: z.string().url(),
   adapterVersion: z.string(),
   expiresAt: z.string(),
   application: z.object({}).passthrough(),
+  filingProfile: filingProfileSchema,
   materials: z.array(filingMaterialManifestSchema),
 }).meta({
   id: "FilingManifest",
@@ -221,6 +236,10 @@ const sourceArchiveSchema = z.object({
   size: z.number().int().positive(),
   createdAt: z.string(),
   updatedAt: z.string(),
+  reviewStatus: z.enum(["pending", "confirmed", "skipped"]),
+  reviewedApplicationUpdatedAt: z.string().nullable(),
+  reviewedSourceUpdatedAt: z.string().nullable(),
+  reviewedAt: z.string().nullable(),
 }).meta({
   id: "ApplicationSourceArchive",
   description: "当前申请已绑定、可供失败重试继续使用的源码压缩包。对象键不会返回前端。",
@@ -422,6 +441,20 @@ export function buildOpenApiDocument() {
           responses: responses(z.null(), "删除成功"),
         },
       },
+      "/api/filing-profile": {
+        get: {
+          tags: ["填报"],
+          summary: "获取当前用户的官网填报默认资料",
+          responses: responses(filingProfileSchema.nullable()),
+        },
+        put: {
+          tags: ["填报"],
+          summary: "保存官网填报默认资料",
+          description: "允许保存不完整资料；创建自动填报任务前必须补齐地址、邮政编码、联系人和联系电话。",
+          requestBody: jsonRequest(filingProfileInputSchema),
+          responses: responses(filingProfileSchema, "官网填报资料已保存"),
+        },
+      },
       "/api/applications/{id}/materials": {
         get: {
           tags: ["材料"],
@@ -498,6 +531,16 @@ export function buildOpenApiDocument() {
           responses: responses(sourceArchiveSchema, "源码压缩包已就绪"),
         },
       },
+      "/api/applications/{id}/source-archive/review": {
+        post: {
+          tags: ["申请"],
+          summary: "保存源码核对状态",
+          description: "确认或跳过当前源码核对；服务端会校验申请版本和源码版本，避免旧反馈覆盖新申请。",
+          requestParams: { path: applicationPath },
+          requestBody: jsonRequest(sourceArchiveReviewSchema),
+          responses: responses(sourceArchiveSchema, "源码核对状态已保存"),
+        },
+      },
       "/api/enrich": {
         post: {
           tags: ["生成"],
@@ -510,7 +553,7 @@ export function buildOpenApiDocument() {
         post: {
           tags: ["生成"],
           summary: "生成软著材料包",
-          description: "返回 text/event-stream。完成事件的 data 为 GenerationComplete；失败事件包含 jobId 和 stage。",
+          description: "服务端读取最新已保存申请和申请级源码包；返回 text/event-stream。完成事件的 data 为 GenerationComplete，失败事件包含 jobId 和 stage。生成过程不会修改申请。",
           requestBody: jsonRequest(generateRequestSchema),
           responses: {
             ...standardErrorResponses,
@@ -670,20 +713,11 @@ export function buildOpenApiDocument() {
           responses: responses(z.null(), "模型连接正常"),
         },
       },
-      "/api/source-upload": {
-        post: {
-          tags: ["辅助/内部"],
-          summary: "创建源码压缩包上传授权",
-          description: "获得授权后，客户端使用返回的 path 和 token 直接上传到 Supabase Storage。",
-          requestBody: jsonRequest(sourceUploadSchema),
-          responses: responses(sourceUploadAuthorizationSchema, "源码上传授权已创建"),
-        },
-      },
       "/api/source-feedback": {
         post: {
           tags: ["申请"],
           summary: "根据源码生成申请信息修正建议",
-          description: "源码压缩包由客户端先直传到 Supabase Storage；本接口读取后生成建议并删除临时源码。建议必须由用户确认后再写回申请。",
+          description: "本接口读取当前申请已绑定的持久化源码压缩包并生成建议，不修改申请、不删除源码。建议必须由用户确认后再写回申请。",
           requestBody: jsonRequest(sourceFeedbackRequestSchema),
           responses: responses(sourceFeedbackResponseSchema, "源码反馈已生成"),
         },

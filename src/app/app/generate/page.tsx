@@ -50,7 +50,7 @@ export default function GeneratePage() {
       <PageHeader
         eyebrow="申报空间 / 材料生成"
         title="材料生成"
-        description="选择一条申请，上传可选源码压缩包，并生成完整的申报材料。"
+        description="选择一条已保存的申请生成完整申报材料；源码压缩包请先在申请编辑页关联并完成核对。"
       />
 
       {error && <div className="app-feedback app-feedback--error">{error}</div>}

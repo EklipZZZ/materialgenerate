@@ -6,6 +6,7 @@ import {
 } from "./applications";
 import type { ApplicationRow } from "./applications";
 import { listOwnedMaterials } from "./materials";
+import { assertCompleteFilingProfile, getOwnedFilingProfile } from "./filing-profiles";
 import { getSupabaseAdmin } from "./config";
 import {
   filingJobCreateSchema,
@@ -205,8 +206,6 @@ function validateFilingForm(form: CopyrightFormData): string[] {
     if (!nonEmpty(holder.document_number)) errors.push(`${label}缺少证件号码`);
     if (!nonEmpty(holder.nationality) || !nonEmpty(holder.province) || !nonEmpty(holder.city)) errors.push(`${label}缺少国籍或地区`);
   }
-  if (!nonEmpty(form.applicant_address)) errors.push("请填写申请人地址");
-  if (!nonEmpty(form.contact_name) || !nonEmpty(form.contact_phone) || !nonEmpty(form.contact_email)) errors.push("请填写联系人、联系电话和电子邮箱");
   return errors;
 }
 
@@ -250,11 +249,13 @@ async function applicationAndMaterials(applicationId: string, userId: string) {
   const materials = await listOwnedMaterials(applicationId, userId, form.development_method);
   const materialError = requiredMaterialError(form, materials.materials);
   if (materialError) throw new ApiError(422, materialError);
-  return { application, form, materials: materials.materials };
+  const filingProfile = await getOwnedFilingProfile(userId);
+  assertCompleteFilingProfile(filingProfile);
+  return { application, form, materials: materials.materials, filingProfile };
 }
 
 async function buildManifest(jobId: string, applicationId: string, userId: string, adapterVersion: string): Promise<{ manifest: FilingManifest; inputMaterials: FilingJobRow["input_materials"] }> {
-  const { form, materials } = await applicationAndMaterials(applicationId, userId);
+  const { form, materials, filingProfile } = await applicationAndMaterials(applicationId, userId);
   const manifestMaterials = materials.map(safeMaterialManifest).filter((item): item is FilingMaterialManifest => Boolean(item));
   const inputMaterials = manifestMaterials.map((material) => ({
     id: material.id,
@@ -269,6 +270,7 @@ async function buildManifest(jobId: string, applicationId: string, userId: strin
       adapterVersion,
       expiresAt,
       application: form,
+      filingProfile,
       materials: manifestMaterials,
     },
     inputMaterials,

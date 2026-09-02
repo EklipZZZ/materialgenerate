@@ -44,11 +44,6 @@ export interface CopyrightFormData {
   original_registration_number: string;
   modification_description: string;
   application_method: ApplicationMethod;
-  applicant_address: string;
-  postal_code: string;
-  contact_name: string;
-  contact_phone: string;
-  contact_email: string;
   development_hardware: string;
   runtime_hardware: string;
   development_os: string;
@@ -97,11 +92,6 @@ export const EMPTY_COPYRIGHT_FORM: CopyrightFormData = {
   original_registration_number: "",
   modification_description: "",
   application_method: "copyright_holder",
-  applicant_address: "",
-  postal_code: "",
-  contact_name: "",
-  contact_phone: "",
-  contact_email: "",
   development_hardware: "PC",
   runtime_hardware: "PC",
   development_os: "Windows 10",
@@ -322,11 +312,6 @@ export function recordToFormData(record: Record<string, unknown>): CopyrightForm
     original_registration_number: asString(base.original_registration_number),
     modification_description: asString(base.modification_description),
     application_method: asEnum(base.application_method, ["copyright_holder", "agent"] as const, "copyright_holder"),
-    applicant_address: asString(base.applicant_address),
-    postal_code: asString(base.postal_code),
-    contact_name: asString(base.contact_name),
-    contact_phone: asString(base.contact_phone),
-    contact_email: asString(base.contact_email),
     development_hardware: asString(base.development_hardware, "PC"),
     runtime_hardware: asString(base.runtime_hardware, "PC"),
     development_os: asString(base.development_os, "Windows 10"),

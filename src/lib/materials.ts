@@ -41,6 +41,9 @@ export interface MaterialsSummary {
   complete: boolean;
   requiredCount: number;
   readyCount: number;
+  filingReady: boolean;
+  filingRequiredCount: number;
+  filingReadyCount: number;
 }
 
 export const materialLabels: Record<MaterialKind, string> = {

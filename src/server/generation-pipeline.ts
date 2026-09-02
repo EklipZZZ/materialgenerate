@@ -6,7 +6,6 @@ import { convertMarkdown } from "./converter";
 import { preflightPdf } from "./pdf-generator";
 import { convertDocxToPdf } from "./pdf-client";
 import type { ApplicationRow } from "./applications";
-import templateAnalysisConfig from "../../assets/template_analysis_cfg.json";
 import sourceCodeConfig from "../../assets/source_code_generation_cfg.json";
 import documentationConfig from "../../assets/documentation_generation_cfg.json";
 import type { Provider, ThinkingMode } from "./models";
@@ -19,8 +18,6 @@ interface GenerationEvent {
 
 export interface GenerationInput {
   application: ApplicationRow;
-  tableTemplate: string;
-  skipAnalyze: boolean;
   provider: Provider;
   model: string;
   apiKey: string;
@@ -51,11 +48,6 @@ function throwIfAborted(signal?: AbortSignal) {
     error.name = "AbortError";
     throw error;
   }
-}
-
-function limitPromptText(value: string, max = 300_000): string {
-  if (value.length <= max) return value;
-  return value.slice(0, max) + "\n\n[源代码内容过长，后续内容已省略，仅用于生成摘要。]";
 }
 
 function replacePrompt(template: string, values: Record<string, string>): string {
@@ -119,47 +111,8 @@ export async function generateMaterials(input: GenerationInput): Promise<Generat
     }, signal);
   }
 
-  let collectionMarkdown = input.tableTemplate || formToMarkdown(application);
-  if (input.skipAnalyze) {
-    emit({ step: "analyze", message: "使用已补全的采集表数据…" });
-    if (!collectionMarkdown.includes("### 计算机软件著作权登记信息采集表")) {
-      collectionMarkdown = "### 计算机软件著作权登记信息采集表\n\n" + collectionMarkdown;
-    }
-  } else {
-    emit({ step: "analyze", message: "正在分析采集表并补充信息…" });
-    const sourceSummary = sourceInfo
-      ? `\n\n【用户提供的源代码（请基于此生成准确的采集表内容）】\n\n${limitPromptText(sourceInfo.content)}`
-      : "";
-    const prompt = replacePrompt(templateAnalysisConfig.up, {
-      template_content: collectionMarkdown,
-      source_code_summary: sourceSummary,
-    });
-    let analyzed = "";
-    await streamLlm({
-      provider: input.provider,
-      model: input.model,
-      apiKey: input.apiKey,
-      messages: [
-        { role: "system", content: templateAnalysisConfig.sp },
-        { role: "user", content: prompt },
-      ],
-      temperature: templateAnalysisConfig.config.temperature,
-      topP: templateAnalysisConfig.config.top_p,
-      maxTokens: templateAnalysisConfig.config.max_completion_tokens,
-      thinking: configuredThinking(templateAnalysisConfig.config),
-      operation: "analyze",
-      signal,
-      onRetry: retryReporter("analyze", "采集表模型"),
-    }, (chunk) => {
-      analyzed += chunk;
-      emit({ step: "analyze", message: "正在生成完整采集表…" });
-    });
-    const match = analyzed.match(/```(?:markdown|md)?\s*([\s\S]*?)```/i);
-    collectionMarkdown = (match?.[1] || analyzed).trim();
-    if (!collectionMarkdown.includes("### 计算机软件著作权登记信息采集表")) {
-      collectionMarkdown = "### 计算机软件著作权登记信息采集表\n\n" + collectionMarkdown;
-    }
-  }
+  const collectionMarkdown = formToMarkdown(application);
+  emit({ step: "analyze", message: "使用当前已保存的申请信息生成采集表…" });
 
   let sourceMarkdown: string;
   if (sourceInfo) {

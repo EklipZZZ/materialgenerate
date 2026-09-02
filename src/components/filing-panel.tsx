@@ -1,10 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { CheckCircle2, CircleHelp, ExternalLink, Link2, LoaderCircle, LockKeyhole, PauseCircle, Play, RotateCcw, Square, Unplug } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { listApplicationMaterials } from "@/lib/materials-api";
 import { type ApplicationMaterial } from "@/lib/materials";
+import { getFilingProfile } from "@/lib/filing-profile-api";
+import { isFilingProfileComplete, type FilingProfile } from "@/lib/filing-profile";
 import { FILING_EXTENSION_SOURCE, FILING_PROTOCOL, FILING_SOURCE, R11_URL, isExtensionToAppMessage, type ExtensionToAppMessage } from "@/lib/filing-protocol";
 import {
   cancelFilingJob,
@@ -89,6 +92,7 @@ export function FilingPanel({ applicationId, holderCount, developmentMethod, sof
   const [job, setJob] = useState<FilingJob | null>(null);
   const [events, setEvents] = useState<FilingEvent[]>([]);
   const [materials, setMaterials] = useState<ApplicationMaterial[]>([]);
+  const [filingProfile, setFilingProfile] = useState<FilingProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -99,13 +103,15 @@ export function FilingPanel({ applicationId, holderCount, developmentMethod, sof
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [latest, materialResult] = await Promise.all([
+      const [latest, materialResult, profile] = await Promise.all([
         getLatestFilingJob(applicationId),
         listApplicationMaterials(applicationId),
+        getFilingProfile(),
       ]);
       setJob(latest);
       jobRef.current = latest;
       setMaterials(materialResult.materials);
+      setFilingProfile(profile);
       if (latest) {
         const details = await getFilingJob(latest.id);
         setEvents(details.events);
@@ -184,6 +190,13 @@ export function FilingPanel({ applicationId, holderCount, developmentMethod, sof
 
   const byKind = useMemo(() => new Map(materials.map((material) => [material.kind, material])), [materials]);
   const coreMaterialsReady = materialReady(byKind.get("source_code_pdf")) && materialReady(byKind.get("user_manual_pdf"));
+  const proofKind = developmentMethod === "cooperative"
+    ? "cooperation_agreement"
+    : developmentMethod === "commissioned"
+      ? "commission_agreement"
+      : developmentMethod === "assigned_task" ? "task_order" : null;
+  const filingMaterialsReady = coreMaterialsReady && (!proofKind || materialReady(byKind.get(proofKind)));
+  const profileReady = isFilingProfileComplete(filingProfile);
   const active = isActiveFilingJob(job);
   const canResume = Boolean(job && ["waiting_user", "waiting_review", "failed", "waiting_login", "filling", "opening_portal"].includes(job.status));
   const recentEvents = events.slice(-3).reverse();
@@ -199,6 +212,14 @@ export function FilingPanel({ applicationId, holderCount, developmentMethod, sof
     }
     if (!coreMaterialsReady) {
       setError("请先生成源代码 PDF 和用户手册 PDF。");
+      return;
+    }
+    if (!filingMaterialsReady) {
+      setError("请先准备当前开发方式要求的条件协议或证明材料。");
+      return;
+    }
+    if (!profileReady) {
+      setError("请先在设置中完善官网填报资料（地址、邮编、联系人和电话）。");
       return;
     }
     const holderText = holderCount > 0 ? `${holderCount} 名已明确录入的著作权人` : "著作权人信息";
@@ -282,8 +303,8 @@ export function FilingPanel({ applicationId, holderCount, developmentMethod, sof
           <div className="filing-panel__meta">
             <span><strong>目标</strong> 中国版权保护中心 R11</span>
             <a href={R11_URL} target="_blank" rel="noreferrer">查看官方入口 <ExternalLink size={13} /></a>
-            <span><strong>材料</strong> {coreMaterialsReady ? "源代码 PDF、用户手册 PDF 已就绪" : "需要先生成两个 PDF"}</span>
-            {developmentMethod === "cooperative" && <span><strong>合作开发</strong> {materialReady(byKind.get("cooperation_agreement")) ? "协议已上传" : "还需要合作开发协议"}</span>}
+            <span><strong>前置材料</strong> {filingMaterialsReady ? "源代码 PDF、用户手册 PDF及条件材料已就绪" : "请先准备 PDF 和条件材料"}</span>
+            <span><strong>官网资料</strong> {profileReady ? "已配置" : <><Link className="app-inline-link" href="/settings/filing-profile">未配置，前往设置</Link></>}</span>
           </div>
           {job && (
             <div className="filing-progress">
@@ -293,7 +314,7 @@ export function FilingPanel({ applicationId, holderCount, developmentMethod, sof
             </div>
           )}
           <div className="filing-panel__actions">
-            {!active && <Button type="button" onClick={() => void start()} disabled={busy || loading}>
+            {!active && <Button type="button" onClick={() => void start()} disabled={busy || loading || !filingMaterialsReady || !profileReady}>
               {busy ? <LoaderCircle className="app-spin" size={15} /> : job?.status === "failed" || job?.status === "cancelled" ? <RotateCcw size={15} /> : <Play size={15} />}
               {job?.status === "failed" || job?.status === "cancelled" ? "重新开始填报" : "开始自动填报"}
             </Button>}
@@ -305,7 +326,7 @@ export function FilingPanel({ applicationId, holderCount, developmentMethod, sof
           {recentEvents.length > 0 && <div className="filing-events" aria-label="最近填报事件">
             {recentEvents.map((event) => <div className="filing-event" key={event.id}><CheckCircle2 size={13} /><span>{eventLabels[event.code] || "填报状态已更新"}</span><time>{new Date(event.created_at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}</time></div>)}
           </div>}
-          {!job && <div className="filing-panel__help"><CircleHelp size={15} /><span>第一次使用请先在材料生成页确认源代码 PDF、用户手册 PDF，以及合作开发协议（如适用）都已就绪。</span></div>}
+          {!job && <div className="filing-panel__help"><CircleHelp size={15} /><span>第一次使用请先确认前置材料和官网填报资料都已就绪；签章页不阻塞第一次填写申请表。</span></div>}
           {job?.status === "completed" && <div className="filing-panel__help"><PauseCircle size={15} /><span>自动化终点是“填写并上传后暂停”。请在官方页面自行复核、生成/处理签章页并完成最终提交。</span></div>}
         </>
       )}

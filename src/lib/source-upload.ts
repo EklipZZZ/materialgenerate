@@ -20,30 +20,16 @@ export interface SavedSourceArchive {
   size: number;
   createdAt: string;
   updatedAt: string;
+  reviewStatus: "pending" | "confirmed" | "skipped";
+  reviewedApplicationUpdatedAt: string | null;
+  reviewedSourceUpdatedAt: string | null;
+  reviewedAt: string | null;
 }
 
 async function responseData<T>(response: Response, fallback: string): Promise<T> {
   const body = await response.json().catch(() => ({})) as { data?: T; msg?: string };
   if (!response.ok || body.data === undefined) throw new Error(body.msg || fallback);
   return body.data;
-}
-
-export async function uploadSourceFile(file: File): Promise<{ path: string; fileName: string }> {
-  if (file.size <= 0 || file.size > MAX_UPLOAD_BYTES) {
-    throw new Error("源码压缩包不能超过 100 MB");
-  }
-  const response = await authorizedFetch(apiEndpoint("/api/source-upload"), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ fileName: file.name, contentType: file.type, size: file.size }),
-  });
-  const body = await response.json().catch(() => ({})) as { data?: UploadResponse; msg?: string };
-  if (!response.ok || !body.data?.path || !body.data.token) throw new Error(body.msg || "创建源码上传授权失败");
-  const result = await getSupabaseBrowserClient().storage
-    .from(STORAGE_BUCKET)
-    .uploadToSignedUrl(body.data.path, body.data.token, file);
-  if (result.error) throw new Error("源码压缩包上传失败");
-  return { path: body.data.path, fileName: file.name };
 }
 
 export async function getSavedSourceArchive(applicationId: string): Promise<SavedSourceArchive | null> {
@@ -83,4 +69,16 @@ export async function deleteSavedSourceArchive(applicationId: string): Promise<v
     method: "DELETE",
   });
   await responseData<null>(response, "删除源码压缩包失败");
+}
+
+export async function reviewSavedSourceArchive(
+  applicationId: string,
+  input: { decision: "confirmed" | "skipped"; applicationUpdatedAt: string; sourceUpdatedAt: string },
+): Promise<SavedSourceArchive> {
+  const response = await authorizedFetch(apiEndpoint(`/api/applications/${encodeURIComponent(applicationId)}/source-archive/review`), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return responseData<SavedSourceArchive>(response, "保存源码核对状态失败");
 }

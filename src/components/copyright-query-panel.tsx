@@ -8,14 +8,11 @@ import { CopyrightFormEditor } from "@/components/copyright-form-editor";
 import { apiEndpoint } from "@/lib/api-base";
 import { authorizedFetch } from "@/lib/auth";
 import type { ByokConfig } from "@/lib/byok";
-import { formToEnrichmentDraft, formToMarkdown, recordToFormData, type CopyrightFormData, validateCopyrightForm } from "@/lib/copyright-form";
+import { formToEnrichmentDraft, recordToFormData, type CopyrightFormData, validateCopyrightForm } from "@/lib/copyright-form";
 import { deleteApplication, listApplications, updateApplication, type ApplicationRecord } from "@/lib/softreg-api";
 
 export interface QueryPanelGeneratePayload {
-  tableTemplate: string;
-  fileName: string;
   formId: string;
-  skipAnalyze: boolean;
 }
 
 interface Props {
@@ -148,7 +145,7 @@ export function CopyrightQueryPanel({ disabled, refreshToken, byok, onReadyToGen
               <Button type="button" variant="outline" onClick={() => void enrich()} disabled={disabled || working}><Sparkles size={15} />AI 补全并生成主要功能</Button>
               <Button type="button" variant="ghost" onClick={() => void remove()} disabled={disabled || working}><Trash2 size={15} />删除</Button>
               <Button type="button" onClick={() => void save()} disabled={disabled || working}>{working ? <LoaderCircle className="app-spin" size={15} /> : <Save size={15} />}保存修改</Button>
-              <Button type="button" variant="secondary" onClick={() => onReadyToGenerate({ tableTemplate: formToMarkdown(selectedForm), fileName: selectedForm.software_short_name || selectedForm.software_full_name || "software-copyright", formId: selected.id, skipAnalyze: true })} disabled={disabled || working}><ArrowRight size={15} />准备生成</Button>
+              <Button type="button" variant="secondary" onClick={() => onReadyToGenerate({ formId: selected.id })} disabled={disabled || working}><ArrowRight size={15} />进入材料生成</Button>
             </div>
           </>}
         </div>

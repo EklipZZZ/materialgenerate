@@ -93,7 +93,10 @@ Content-Type: application/json
   "summary": {
     "complete": false,
     "requiredCount": 6,
-    "readyCount": 4
+    "readyCount": 4,
+    "filingReady": true,
+    "filingRequiredCount": 2,
+    "filingReadyCount": 2
   }
 }
 ```
@@ -151,11 +154,21 @@ Content-Type: application/json
 
 ### `DELETE /api/applications/{id}/source-archive`
 
-删除当前申请绑定的源码压缩包。生成失败不会自动调用该接口；使用源码成功生成材料后，服务端会自动清理该临时源码包。
+删除当前申请绑定的源码压缩包。生成失败、重试或成功后都不会自动删除；用户可以回到申请编辑页替换或删除。
 
-### `POST /api/source-upload`
+### `POST /api/applications/{id}/source-archive/review`
 
-兼容源码反馈流程的临时上传接口。生成页面使用申请级 `source-archive` 接口，避免失败重试时丢失源码文件。
+保存当前源码核对状态。请求体为：
+
+```json
+{
+  "decision": "confirmed",
+  "applicationUpdatedAt": "2026-09-02T00:00:00.000Z",
+  "sourceUpdatedAt": "2026-09-02T00:01:00.000Z"
+}
+```
+
+`decision` 也可以是 `skipped`。服务端会同时校验申请和源码版本；申请被修改或源码被替换后，原核对状态失效。
 
 ### `POST /api/source-feedback`
 
@@ -164,13 +177,11 @@ Content-Type: application/json
 ```json
 {
   "applicationId": "00000000-0000-0000-0000-000000000000",
-  "llmConfigId": "00000000-0000-0000-0000-000000000000",
-  "sourceObjectKey": "incoming/user-id/upload-id-source.zip",
-  "sourceFileName": "source.zip"
+  "llmConfigId": "00000000-0000-0000-0000-000000000000"
 }
 ```
 
-服务端会确认申请、模型配置和源码对象属于当前用户，安全读取压缩包后返回源码文件数、统计行数以及建议列表。源码对象在本次请求结束时删除，不会自动覆盖申请。建议包含字段、原值、建议值和依据，前端由用户勾选后写回表单并另行调用申请更新接口。
+服务端会读取当前申请已持久化的源码压缩包，返回源码文件数、统计行数以及建议列表。源码不会因反馈或材料生成被删除，也不会自动覆盖申请。建议包含字段、原值、建议值和依据，前端由用户勾选后与申请一起保存。
 
 源码反馈只允许涉及软件技术和功能字段，不涉及著作权人、证件、权利、申请人、联系人、联系方式或日期。源码统计行数由服务端计算，不接受模型猜测。
 
@@ -196,9 +207,9 @@ Content-Type: application/json
 
 ### `POST /api/generate`
 
-请求体包含 `applicationId`、`llmConfigId`、`sourceMode`，以及可选的 `tableTemplate` 和 `skipAnalyze`。`sourceMode` 为 `saved` 时必须存在申请级源码包；为 `none` 时明确根据申请信息生成源码。旧的 `sourceObjectKey` 和 `sourceFileName` 只作为兼容字段保留。
+请求体只包含 `applicationId` 和 `llmConfigId`。服务端重新读取当前已保存申请；如果申请绑定源码，则必须已经完成当前申请版本的 `confirmed` 或 `skipped` 核对，并使用这份源码生成材料。没有源码时直接根据申请信息生成。生成过程不会修改申请，也不接受客户端表格快照。
 
-此接口不是普通 JSON 响应，而是 `text/event-stream`。当 `skipAnalyze` 为 `true` 时，启动前会要求主要功能满足 500～1300 字符；事件格式为：
+此接口不是普通 JSON 响应，而是 `text/event-stream`；启动前会要求主要功能满足 500～1300 字符。事件格式为：
 
 ```text
 data: {"step":"source_code","message":"正在生成源代码文档…","data":{}}
@@ -271,6 +282,27 @@ data: {"step":"source_code","message":"正在生成源代码文档…","data":{}
 
 旧版兼容接口，请求体为 `{ "llmConfigId": "..." }`。新调用方应使用 `/api/llm-configs/{id}/test`。
 
+## 官网填报资料
+
+### `GET /api/filing-profile`
+
+获取当前用户的一套默认官网填报资料。没有保存过时返回 `null`；响应只包含申请人地址、邮政编码、联系人和联系电话，不包含邮箱。
+
+### `PUT /api/filing-profile`
+
+保存默认官网填报资料。允许暂存不完整内容，但创建自动填报任务前四项必须全部填写：
+
+```json
+{
+  "applicant_address": "北京市海淀区示例路 1 号",
+  "postal_code": "100000",
+  "contact_name": "示例联系人",
+  "contact_phone": "13800000000"
+}
+```
+
+系统不会从历史申请或旧联系方式猜测、迁移这些资料。
+
 ## 辅助接口
 
 ### `GET /api/health`
@@ -287,7 +319,7 @@ Chrome 扩展相关接口只由已登录的网页应用调用。扩展本身不�
 
 ### `POST /api/applications/{id}/filing-jobs`
 
-检查申请字段、著作权人和源代码/用户手册 PDF，并创建一个活动填报任务。合作开发必须已经上传合作开发协议。成功响应包含 `job` 和本次任务专用的 `manifest`：manifest 包含当前表单、材料 ID/元数据和约 14 分钟有效的 Storage 下载地址（服务端预留过期缓冲）。响应不会包含 Supabase Token、API Key 或密码。
+检查申请字段、著作权人、官网默认资料和源代码/用户手册 PDF，并创建一个活动填报任务。合作开发必须已经上传合作开发协议。签章页不阻塞第一次填表，它由官方系统后续生成。成功响应包含 `job` 和本次任务专用的 `manifest`：manifest 包含当前表单、官网默认资料、材料 ID/元数据和约 14 分钟有效的 Storage 下载地址（服务端预留过期缓冲）。响应不会包含 Supabase Token、API Key 或密码。
 
 请求示例：
 

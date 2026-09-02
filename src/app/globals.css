@@ -1669,6 +1669,43 @@ textarea:focus-visible {
   margin-top: 15px;
 }
 
+.material-checklist__group {
+  display: grid;
+  gap: 8px;
+}
+
+.material-checklist__group + .material-checklist__group {
+  margin-top: 14px;
+  border-top: 1px solid var(--app-border);
+  padding-top: 14px;
+}
+
+.material-checklist__group-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.material-checklist__group-title {
+  margin: 0;
+  color: var(--app-text);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.material-checklist__group-description {
+  margin: 3px 0 0;
+  color: var(--app-text-subtle);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.material-checklist__group-list {
+  display: grid;
+  gap: 7px;
+}
+
 .material-item {
   display: flex;
   min-width: 0;

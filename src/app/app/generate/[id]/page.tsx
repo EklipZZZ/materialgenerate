@@ -24,15 +24,12 @@ import { Button } from "@/components/ui/button";
 import { apiEndpoint } from "@/lib/api-base";
 import { authorizedFetch } from "@/lib/auth";
 import { type ByokConfig } from "@/lib/byok";
-import { formToMarkdown } from "@/lib/copyright-form";
 import { getApplicationProgress } from "@/lib/application-progress";
 import { loadPersistedByok } from "@/lib/llm-config-client";
 import { getApplication, type ApplicationRecord } from "@/lib/softreg-api";
 import {
-  deleteSavedSourceArchive,
   getSavedSourceArchive,
   type SavedSourceArchive,
-  uploadSavedSourceArchive,
 } from "@/lib/source-upload";
 
 interface GenerationResult {
@@ -85,6 +82,19 @@ function stepIndex(step: string): number {
   return generationSteps.findIndex((item) => item.key === step);
 }
 
+function sourceReviewIsCurrent(archive: SavedSourceArchive | null, applicationUpdatedAt?: string): boolean {
+  return Boolean(archive
+    && archive.reviewStatus !== "pending"
+    && archive.reviewedApplicationUpdatedAt === applicationUpdatedAt
+    && archive.reviewedSourceUpdatedAt === archive.updatedAt);
+}
+
+function sourceReviewLabel(archive: SavedSourceArchive | null, applicationUpdatedAt?: string): string {
+  if (!archive) return "未关联源码，生成器将根据申请信息生成源码材料";
+  if (!sourceReviewIsCurrent(archive, applicationUpdatedAt)) return "待核对：请回申请页处理";
+  return archive.reviewStatus === "skipped" ? "已跳过核对，将使用该源码" : "已确认，将使用该源码";
+}
+
 function resultItems() {
   return [
     { key: "sourceCodeDocx", label: "源代码文档", description: "DOCX", icon: FileCode2 },
@@ -100,10 +110,7 @@ export default function GenerationDetailPage() {
   const id = params?.id;
   const [application, setApplication] = useState<ApplicationRecord | null>(null);
   const [byok, setByok] = useState<ByokConfig | null>(null);
-  const [sourceCodeFile, setSourceCodeFile] = useState<File | null>(null);
   const [savedSourceArchive, setSavedSourceArchive] = useState<SavedSourceArchive | null>(null);
-  const [useSourceArchive, setUseSourceArchive] = useState(false);
-  const [sourceUploading, setSourceUploading] = useState(false);
   const [currentStep, setCurrentStep] = useState("");
   const [message, setMessage] = useState("");
   const [result, setResult] = useState<GenerationResult | null>(null);
@@ -125,7 +132,6 @@ export default function GenerationDetailPage() {
         setByok(storedByok);
         setLatestJob(job);
         setSavedSourceArchive(archive);
-        setUseSourceArchive(Boolean(archive));
         if (job && (job.status === "failed" || job.status === "cancelled")) {
           setCurrentStep(job.current_step);
           setMessage(job.error_message || "上一次生成任务未完成");
@@ -149,38 +155,6 @@ export default function GenerationDetailPage() {
       abortRef.current?.abort();
     };
   }, [id]);
-
-  async function selectSourceArchive(file: File | null) {
-    if (!file || !id) return;
-    setSourceCodeFile(file);
-    setSourceUploading(true);
-    setError(null);
-    try {
-      const archive = await uploadSavedSourceArchive(id, file);
-      setSavedSourceArchive(archive);
-      setUseSourceArchive(true);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "源码压缩包上传失败");
-    } finally {
-      setSourceCodeFile(null);
-      setSourceUploading(false);
-    }
-  }
-
-  async function removeSourceArchive() {
-    if (!id || !savedSourceArchive) return;
-    setSourceUploading(true);
-    setError(null);
-    try {
-      await deleteSavedSourceArchive(id);
-      setSavedSourceArchive(null);
-      setUseSourceArchive(false);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "源码压缩包删除失败");
-    } finally {
-      setSourceUploading(false);
-    }
-  }
 
   useEffect(() => {
     if (!id || !latestStatus || !["queued", "running"].includes(latestStatus)) return;
@@ -212,8 +186,8 @@ export default function GenerationDetailPage() {
       setError("请先在设置中保存 AI 模型配置");
       return;
     }
-    if (useSourceArchive && !savedSourceArchive) {
-      setError("本次选择使用源码压缩包，请先上传文件并等待就绪");
+    if (savedSourceArchive && !sourceReviewIsCurrent(savedSourceArchive, application.updated_at)) {
+      setError("当前申请关联的源码尚未完成核对，或申请内容已变化。请回申请页完成源码核对后再生成");
       return;
     }
 
@@ -233,9 +207,6 @@ export default function GenerationDetailPage() {
         body: JSON.stringify({
           applicationId: id,
           llmConfigId: byok.id,
-          tableTemplate: formToMarkdown(application),
-          skipAnalyze: true,
-          sourceMode: useSourceArchive ? "saved" : "none",
         }),
         signal: controller.signal,
       });
@@ -288,10 +259,6 @@ export default function GenerationDetailPage() {
       setResult(finalResult);
       if (finalResult?.jobId) {
         setLatestJob({ id: finalResult.jobId, status: "completed", current_step: "complete", progress: 100 });
-        if (useSourceArchive) {
-          setSavedSourceArchive(null);
-          setUseSourceArchive(false);
-        }
         setMaterialRefresh((current) => current + 1);
       } else {
         const job = await fetchLatestGenerationJob(id);
@@ -347,7 +314,7 @@ export default function GenerationDetailPage() {
             <div className="app-panel__header">
               <div>
                 <h2 className="app-panel__title">生成配置</h2>
-                <p className="app-panel__description">源码压缩包是可选输入；系统会使用已保存的申请信息生成材料。</p>
+                <p className="app-panel__description">这里只读取最新已保存的申请信息；源码压缩包在申请页上传和核对，生成过程不会改写表单。</p>
               </div>
               <Link className="app-inline-link" href={`/app/applications/${application.id}`}>编辑申请 <ArrowLeft size={13} className="app-arrow-forward" /></Link>
             </div>
@@ -364,38 +331,12 @@ export default function GenerationDetailPage() {
               </div>
 
               <div className="generation-field generation-field--spaced">
-                <span className="form-label">源码压缩包 <small className="form-hint">可选</small></span>
-                <label className={`upload-zone ${sourceCodeFile || savedSourceArchive ? "upload-zone--selected" : ""}`} htmlFor="source-code-file">
-                  <FileArchive size={20} />
-                  <strong>{sourceUploading ? `正在上传 ${sourceCodeFile?.name || "源码压缩包"}…` : savedSourceArchive?.fileName || "选择源码压缩包"}</strong>
-                  <span>{savedSourceArchive
-                    ? `${Math.ceil(savedSourceArchive.size / 1024 / 1024)} MB · 已就绪，失败后可直接重试`
-                    : sourceUploading ? "上传完成前不能开始生成" : "支持 ZIP、TAR.GZ，最大 100 MB"}</span>
-                  <input
-                    id="source-code-file"
-                    className="sr-only"
-                    type="file"
-                    accept=".zip,.tar.gz,.tgz,application/zip,application/gzip"
-                    onChange={(event) => {
-                      const file = event.target.files?.[0] ?? null;
-                      event.target.value = "";
-                      void selectSourceArchive(file);
-                    }}
-                    disabled={generating || sourceUploading}
-                  />
-                </label>
-                {savedSourceArchive && !generating && !sourceUploading && <button type="button" className="generation-file-clear" onClick={() => void removeSourceArchive()}><X size={13} />移除文件</button>}
-                <label className="generation-source-mode">
-                  <input
-                    type="checkbox"
-                    checked={useSourceArchive}
-                    onChange={(event) => setUseSourceArchive(event.target.checked)}
-                    disabled={generating || sourceUploading || !savedSourceArchive}
-                  />
-                  <span>{useSourceArchive
-                    ? `本次将使用 ${savedSourceArchive?.fileName || "已上传源码压缩包"}`
-                    : "本次不使用源码压缩包，将根据申请信息生成源码"}</span>
-                </label>
+                <span className="form-label">源码来源</span>
+                <div className={`generation-source-status ${savedSourceArchive && !sourceReviewIsCurrent(savedSourceArchive, application.updated_at) ? "generation-source-status--warning" : ""}`}>
+                  <FileArchive size={18} />
+                  <span><strong>{savedSourceArchive?.fileName || "未上传源码压缩包"}</strong><small>{savedSourceArchive ? `${Math.ceil(savedSourceArchive.size / 1024 / 1024)} MB · ${sourceReviewLabel(savedSourceArchive, application.updated_at)}` : sourceReviewLabel(null)}</small></span>
+                  <Link className="app-inline-link" href={`/app/applications/${application.id}`}>去申请页管理源码</Link>
+                </div>
               </div>
 
               {!byok?.id && (
@@ -407,7 +348,7 @@ export default function GenerationDetailPage() {
               )}
 
               <div className="generation-actions">
-                <Button type="button" onClick={() => void generate()} disabled={generating || sourceUploading || (useSourceArchive && !savedSourceArchive) || !byok?.id || latestStatus === "queued" || latestStatus === "running"}>
+                <Button type="button" onClick={() => void generate()} disabled={generating || (savedSourceArchive !== null && !sourceReviewIsCurrent(savedSourceArchive, application.updated_at)) || !byok?.id || latestStatus === "queued" || latestStatus === "running"}>
                   {generating ? <LoaderCircle className="app-spin" size={16} /> : <Play size={16} />}
                   {generating ? "生成中…" : "开始生成"}
                 </Button>

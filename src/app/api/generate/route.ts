@@ -14,7 +14,7 @@ import { validateCopyrightTextFields } from "@/lib/copyright-constraints";
 import { getLlmFailureInfo } from "@/server/llm";
 import { DocumentConversionError } from "@/server/converter";
 import { generationObjectKeys } from "@/server/generation-output";
-import { clearOwnedSourceArchive, getOwnedSourceArchive } from "@/server/source-archives";
+import { getOwnedSourceArchive, isSourceArchiveReviewCurrent } from "@/server/source-archives";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,10 +30,6 @@ const MAX_SOURCE_ARCHIVE_BYTES = 100 * 1024 * 1024;
 
 function safeName(value: string): string {
   return value.replace(/[\\/:*?"<>|]/g, "_").trim().slice(0, 100) || "software-copyright";
-}
-
-function sourceNameFromKey(key: string): string {
-  return key.split("/").pop() || "source.zip";
 }
 
 function progressForStep(step: string): number {
@@ -98,21 +94,14 @@ export async function POST(request: NextRequest) {
     if (!llmConfig) return fail(404, "模型配置不存在，请先在设置中保存配置");
     application = await getOwnedApplication(parsed.applicationId, user.id, request.signal);
     if (!application) return fail(404, "申请不存在");
-    if (parsed.sourceObjectKey && !parsed.sourceObjectKey.startsWith(`incoming/${user.id}/`)) {
-      return fail(400, "源码文件无效");
+    savedSourceArchive = await getOwnedSourceArchive(application.id, user.id);
+    if (savedSourceArchive && !isSourceArchiveReviewCurrent(savedSourceArchive.archive, application.updated_at)) {
+      return fail(409, "当前申请关联的源码尚未完成核对，或申请内容已变化。请回申请页完成源码核对后再生成");
     }
-    if (parsed.sourceMode && parsed.sourceObjectKey) return fail(400, "不能同时使用持久化源码和临时源码参数");
-    if (parsed.sourceMode === "saved") {
-      savedSourceArchive = await getOwnedSourceArchive(application.id, user.id);
-      if (!savedSourceArchive) return fail(400, "本次选择使用源码压缩包，但当前申请没有已上传的源码文件");
-    }
-    if (parsed.skipAnalyze) {
-      const effective = effectiveApplication(application).effective_form as Record<string, unknown>;
-      const validationErrors = validateCopyrightTextFields(effective, { requireMainFunctions: true });
-      if (validationErrors.length) {
-        if (parsed.sourceObjectKey) await deleteObjects([parsed.sourceObjectKey]).catch(() => undefined);
-        return fail(400, `生成前请修正：${validationErrors[0]}`);
-      }
+    const effective = effectiveApplication(application).effective_form as Record<string, unknown>;
+    const validationErrors = validateCopyrightTextFields(effective, { requireMainFunctions: true });
+    if (validationErrors.length) {
+      return fail(400, `生成前请修正：${validationErrors[0]}`);
     }
   } catch (error) {
     return errorResponse(error, "生成请求无效");
@@ -127,7 +116,6 @@ export async function POST(request: NextRequest) {
       model: llmConfig.model,
     });
   } catch (error) {
-    if (parsed.sourceObjectKey) await deleteObjects([parsed.sourceObjectKey]).catch(() => undefined);
     return errorResponse(error, "创建生成任务失败");
   }
   const jobId = job.id;
@@ -186,11 +174,10 @@ export async function POST(request: NextRequest) {
           emit("init", "生成任务已启动");
           await getSupabaseAdmin().from("applications").update({
             status: "generating",
-            updated_at: new Date().toISOString(),
           }).eq("id", application.id).eq("user_id", user.id);
 
           let sourceBuffer: Buffer | undefined;
-          const sourceKey = parsed.sourceMode === "saved" ? savedSourceArchive?.objectKey : parsed.sourceObjectKey;
+          const sourceKey = savedSourceArchive?.objectKey;
           if (sourceKey) {
             stage = "source-download";
             emit("init", "正在读取已上传的源代码压缩包…");
@@ -200,15 +187,11 @@ export async function POST(request: NextRequest) {
           stage = "generation";
           const generated = await generateMaterials({
             application,
-            tableTemplate: parsed.tableTemplate,
-            skipAnalyze: parsed.skipAnalyze,
             provider: llmConfig.provider,
             model: llmConfig.model,
             apiKey: llmConfig.apiKey,
             sourceBuffer,
-            sourceFileName: parsed.sourceMode === "saved"
-              ? savedSourceArchive?.archive.fileName
-              : parsed.sourceFileName || (sourceKey ? sourceNameFromKey(sourceKey) : undefined),
+            sourceFileName: savedSourceArchive?.archive.fileName,
             requestUrl: request.url,
             signal: abortController.signal,
             emit: (event) => {
@@ -282,7 +265,6 @@ export async function POST(request: NextRequest) {
           });
           const applicationUpdate = await getSupabaseAdmin().from("applications").update({
             status: "completed",
-            updated_at: new Date().toISOString(),
           }).eq("id", application.id).eq("user_id", user.id);
           if (applicationUpdate.error) throw new Error("application status update failed");
           await updateGenerationJob(jobId, user.id, {
@@ -291,11 +273,6 @@ export async function POST(request: NextRequest) {
             progress: 100,
             completed_at: new Date().toISOString(),
           });
-          if (parsed.sourceMode === "saved") {
-            await clearOwnedSourceArchive(application.id, user.id).catch((error) => {
-              console.warn("completed source archive cleanup failed", { message: error instanceof Error ? error.message : "unknown" });
-            });
-          }
           emit("complete", "生成完成", {
             jobId,
             sourceCodeDocx,
@@ -393,11 +370,9 @@ export async function POST(request: NextRequest) {
           if (uploadedKeys.length) await deleteObjects(uploadedKeys).catch(() => undefined);
           await getSupabaseAdmin().from("applications").update({
             status: "draft",
-            updated_at: new Date().toISOString(),
           }).eq("id", application.id).eq("user_id", user.id);
         } finally {
           await Promise.all(pendingPersistence);
-          if (parsed.sourceObjectKey) await deleteObjects([parsed.sourceObjectKey]).catch(() => undefined);
           request.signal.removeEventListener("abort", abort);
           if (!controllerClosed) {
             controllerClosed = true;

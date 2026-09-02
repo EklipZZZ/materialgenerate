@@ -7,6 +7,7 @@ import {
   applicationPayloadFields,
   copyrightHolderFields,
 } from "./api-contracts.ts";
+import { invalidateOwnedSourceArchiveReview } from "./source-archives";
 
 export {
   applicationFields,
@@ -38,6 +39,8 @@ export interface ApplicationRow extends Record<string, unknown> {
   id: string;
   user_id: string;
   status: string;
+  created_at?: string;
+  updated_at?: string;
   enriched_data?: Record<string, unknown> | null;
   copyright_holders?: CopyrightHolderRow[];
 }
@@ -178,6 +181,7 @@ export async function saveOwnedApplicationEnrichment(
   if (signal) query.abortSignal(signal);
   const { data, error } = await query.maybeSingle();
   if (error) throw new Error("application enrichment update failed");
+  if (data) await invalidateOwnedSourceArchiveReview(applicationId, userId);
   return data ? attachHolders(data as ApplicationRow, userId) : null;
 }
 

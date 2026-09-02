@@ -67,11 +67,6 @@ function formFor(holders: CopyrightHolder[], developmentMethod: "independent" | 
     target_industry: "软件服务",
     main_functions: "模拟申请系统用于验证软件著作权登记表的字段映射、著作权人分类、材料上传和人工暂停流程。".repeat(8),
     technical_features: "使用语义字段定位并在写入后校验结果。",
-    applicant_address: "北京市海淀区模拟路 1 号",
-    postal_code: "100000",
-    contact_name: "测试联系人",
-    contact_phone: "13800000000",
-    contact_email: "test@example.com",
     copyright_holders: holders,
   };
 }
@@ -111,7 +106,6 @@ function fixture(form: CopyrightFormData, fileCount: number): string {
     <div class="form-item"><label for="postal-code">邮政编码</label><input id="postal-code"></div>
     <div class="form-item"><label for="contact-name">联系人</label><input id="contact-name"></div>
     <div class="form-item"><label for="contact-phone">联系电话</label><input id="contact-phone"></div>
-    <div class="form-item"><label for="contact-email">电子邮箱</label><input id="contact-email"></div>
     <div class="form-item"><label for="development-hardware">开发的硬件环境</label><input id="development-hardware"></div>
     <div class="form-item"><label for="runtime-hardware">运行的硬件环境</label><input id="runtime-hardware"></div>
     <div class="form-item"><label for="development-os">开发操作系统</label><input id="development-os"></div>
@@ -141,6 +135,12 @@ function manifestForKinds(form: CopyrightFormData, kinds: TestMaterialKind[]): F
     adapterVersion: "r11-v1",
     expiresAt: new Date(Date.now() + 60_000).toISOString(),
     application: form,
+    filingProfile: {
+      applicant_address: "北京市海淀区模拟路 1 号",
+      postal_code: "100000",
+      contact_name: "测试联系人",
+      contact_phone: "13800000000",
+    },
     materials: kinds.map((kind, index) => ({
       id: `00000000-0000-4000-8000-00000000001${index + 3}`,
       kind,
@@ -244,6 +244,10 @@ async function runFormScenario(page: Page, form: CopyrightFormData, fileCount: n
   await waitForCode(page, "review_required");
   assert.equal(await page.locator("#software-full-name").inputValue(), form.software_full_name);
   assert.equal(await page.locator("#development-method").inputValue(), form.development_method);
+  assert.equal(await page.locator("#applicant-address").inputValue(), "北京市海淀区模拟路 1 号");
+  assert.equal(await page.locator("#postal-code").inputValue(), "100000");
+  assert.equal(await page.locator("#contact-name").inputValue(), "测试联系人");
+  assert.equal(await page.locator("#contact-phone").inputValue(), "13800000000");
   assert.equal(await page.locator("#holder-name-0").inputValue(), form.copyright_holders[0].name);
   if (form.copyright_holders[1]) assert.equal(await page.locator("#holder-name-1").inputValue(), form.copyright_holders[1].name);
   assert.equal(await page.locator("#final-submit").evaluate((element) => (element.ownerDocument.defaultView as unknown as { __finalSubmitClicks: number }).__finalSubmitClicks), 0);

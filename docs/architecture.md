@@ -23,6 +23,7 @@ Next.js App Router
           │    ├─ application_source_archives
           │    ├─ generation_jobs / job_events
           │    ├─ filing_jobs / filing_events
+          │    ├─ filing_profiles
           │    ├─ generation_records
           │    └─ llm_configs
           │
@@ -51,7 +52,9 @@ Chrome MV3 扩展（用户本机）
 
 （5）执行生成流程并持久化任务事件；
 
-（6）生成短期 Storage 下载链接。
+（6）生成短期 Storage 下载链接；
+
+（7）读取和保存用户级官网填报默认资料。
 
 服务端不信任请求体中的 `user_id`，也不向浏览器返回 Supabase service role key 或完整 LLM API Key。
 
@@ -69,7 +72,7 @@ Route Handler 使用 Supabase 服务端客户端验证 token。数据库层对�
 
 ## 官方网页填报边界
 
-填报任务由 `filing_jobs` / `filing_events` 持久化。网页应用在创建或恢复任务时重新读取申请和材料，并签发短期下载地址；任务表只保存申请更新时间、材料 ID/校验值和状态，不保存签名 URL、密码或完整表单快照。
+填报任务由 `filing_jobs` / `filing_events` 持久化。网页应用在创建或恢复任务时重新读取申请、材料和用户级官网填报资料，并签发短期下载地址；任务表只保存申请更新时间、材料 ID/校验值和状态，不保存签名 URL、密码或完整表单快照。
 
 Chrome 扩展通过页面 `postMessage` 与网页应用通信，再由 Service Worker 打开官方 R11 页面并把脱敏步骤事件转回应用。扩展只允许当前配置的应用 origin、版权中心官网和 Supabase Storage origin；不申请 Cookie、历史记录、密码读取、Native Messaging 或远程脚本权限。申请字段和材料在发送给扩展前必须经过网页中的明确确认。
 
@@ -77,7 +80,7 @@ R11 适配器只使用可见标签、ARIA、字段名称和附近语义容器定
 
 ## 申请和著作权人流程
 
-申请主体存储在 `applications`，结构化著作权人存储在 `copyright_holders`。创建或更新申请时，API 先校验申请字段，再按请求中的 `copyright_holders` 替换该申请的著作权人列表，并按数组顺序写入 `sort_order`。
+软件和权利信息存储在 `applications`，结构化著作权人存储在 `copyright_holders`，官网后续弹窗使用的地址、邮编、联系人和电话单独存储在每个用户一条的 `filing_profiles`。创建或更新申请时，API 先校验申请字段，再按请求中的 `copyright_holders` 替换该申请的著作权人列表，并按数组顺序写入 `sort_order`。
 
 旧版 `company_name` 和 `credit_code` 仍保留在 `applications`。当请求包含组织著作权人时，服务端会在旧字段为空时同步写入首个组织著作权人的名称和证件号码。
 
@@ -100,7 +103,7 @@ R11 适配器只使用可见标签、ARIA、字段名称和附近语义容器定
   → 服务端校验对象大小并将状态更新为 uploaded
 ```
 
-材料列表接口会确保条件材料槽位存在，再返回每种材料的最新记录和完成度摘要。
+材料列表接口会确保条件材料槽位存在，再返回每种材料的最新记录和完成度摘要。摘要分别统计普通材料完整度和“自动填报前置材料”（源代码 PDF、用户手册 PDF及开发方式要求的证明）；申请确认签章页属于官方后续材料，不阻塞第一次自动填写。
 
 ## 生成流程
 
@@ -109,7 +112,7 @@ POST /api/generate
   → 创建 generation_jobs（queued）
   → 更新为 running
   → 写入 job_events 并向浏览器发送 SSE
-  → 按 sourceMode 明确读取持久化源码包或生成源码
+  → 读取当前已保存申请和申请级源码包（若存在且核对版本有效）
   → LLM 生成 Markdown 内容
   → 由规范化内容生成 DOCX
   → LibreOffice 从该 DOCX 导出 PDF
@@ -120,7 +123,7 @@ POST /api/generate
 
 生成接口目前仍是前台 SSE 长请求，不是真正的后台队列。关闭浏览器可能中断执行，但已经写入数据库的失败状态、任务事件和已经完成的文件记录不会依赖内存 Set 保存。长篇用户手册章节串行调用模型，并在同批请求失败时取消剩余调用；DeepSeek 文档生成默认关闭思考模式。由于 Vercel Hobby 计划的 Serverless Function 上限为 300 秒，生成函数配置为 300 秒，并在 270 秒触发服务端软超时，以便在平台硬终止前写入失败状态和释放任务锁。DOCX 生成完成后，主生成进程串行请求独立 LibreOffice 服务转换源代码和用户手册两个 PDF；转换服务内部限制 LibreOffice 并发，使用独立临时目录并在请求结束后删除文件，免费容器冷启动网关错误使用受总超时约束的短指数退避重试。用户手册 DOCX 会清除旧模板中的浮动 PAGE 内容控件，并重建为与源代码文档一致的单段页眉，以保证 LibreOffice 导出的标题和动态页码处于同一行。
 
-发生异常时，任务进入 `failed` 或 `cancelled`，记录失败阶段，删除本次生成的临时产物，并将申请恢复到可重试状态。申请级源码压缩包会保留供重试使用；使用源码成功生成后再清理。模型请求尚未返回正文时发生网络、超时、429 或 5xx 错误，会在总时限内自动重试最多两次。
+发生异常时，任务进入 `failed` 或 `cancelled`，记录失败阶段，删除本次生成的临时产物，并将申请恢复到可重试状态。申请级源码压缩包始终保留供再次核对、重试和重新生成使用。模型请求尚未返回正文时发生网络、超时、429 或 5xx 错误，会在总时限内自动重试最多两次。
 
 如果 Vercel 请求在来不及执行清理逻辑时被中断，任务查询和下一次创建任务都会检查同一申请的 `queued/running` 任务。只有超过 `GENERATION_JOB_STALE_MS`（默认 6 分钟，且服务端最多按 6 分钟回收）未更新的任务才会被标记为 `failed` 并释放任务锁，正常运行中的任务仍然返回冲突提示。
 

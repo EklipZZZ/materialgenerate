@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { applicationIdSchema, filingProfileInputSchema, generateRequestSchema, llmConfigIdSchema, sourceFeedbackRequestSchema } from "../src/server/api-contracts.ts";
 import { buildOpenApiDocument } from "../src/server/openapi.ts";
 
 function containsWriteOnlyApiKey(value: unknown): boolean {
@@ -37,6 +38,9 @@ test("OpenAPI document describes the softreg contract", () => {
   assert.ok(document.paths["/api/filing-jobs/{id}/events"]?.post);
   assert.ok(document.paths["/api/filing-jobs/{id}/resume"]?.post);
   assert.ok(document.paths["/api/filing-jobs/{id}/cancel"]?.post);
+  assert.ok((document.components?.schemas as Record<string, unknown> | undefined)?.FilingProfile);
+  const filingManifest = (document.components?.schemas as Record<string, unknown> | undefined)?.FilingManifest as Record<string, unknown> | undefined;
+  assert.ok(filingManifest && (filingManifest.properties as Record<string, unknown>)?.filingProfile);
 
   const generationPost = document.paths["/api/generate"].post as Record<string, unknown>;
   const generationResponses = generationPost.responses as Record<string, unknown>;
@@ -49,4 +53,16 @@ test("OpenAPI document describes the softreg contract", () => {
   assert.equal(serialized.includes("auth_tag"), false);
   assert.equal(serialized.includes("SUPABASE_SERVICE_ROLE_KEY"), false);
   assert.equal(containsWriteOnlyApiKey(document), true);
+});
+
+test("generation and source feedback use only persisted application inputs", () => {
+  const applicationId = "00000000-0000-4000-8000-000000000001";
+  const llmConfigId = "00000000-0000-4000-8000-000000000002";
+  assert.equal(applicationIdSchema.safeParse(applicationId).success, true);
+  assert.equal(llmConfigIdSchema.safeParse(llmConfigId).success, true);
+  assert.equal(generateRequestSchema.safeParse({ applicationId, llmConfigId }).success, true);
+  assert.equal(generateRequestSchema.safeParse({ applicationId, llmConfigId, sourceMode: "saved" }).success, false);
+  assert.equal(sourceFeedbackRequestSchema.safeParse({ applicationId, llmConfigId }).success, true);
+  assert.equal(sourceFeedbackRequestSchema.safeParse({ applicationId, llmConfigId, sourceObjectKey: "incoming/not-accepted.zip" }).success, false);
+  assert.equal(filingProfileInputSchema.safeParse({ contact_name: "暂存联系人" }).success, true);
 });

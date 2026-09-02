@@ -34,6 +34,8 @@ interface Session {
   manifest: FilingManifest;
   stage: SessionStage;
   navigationClicked: boolean;
+  loginPromptSeen: boolean;
+  profileFilled: boolean;
   uploaded: Set<string>;
   lastNeedCode: FilingEventCode | null;
 }
@@ -108,14 +110,24 @@ function resetSession(command: Extract<OfficialCommand, { type: "BEGIN_FILING" |
       // an upload area is the only safe signal needed to continue.
       stage: command.type === "RESUME_FILING" && hasUploadControls(document) ? "upload" : "idle",
       navigationClicked: false,
+      loginPromptSeen: false,
+      profileFilled: false,
       uploaded: new Set<string>(),
       lastNeedCode: null,
     };
   } else {
     session.manifest = command.manifest;
     session.lastNeedCode = null;
-    if (session.stage === "review" || session.stage === "signature") session.stage = "upload";
-    else if (session.stage === "done") session.stage = hasUploadControls(document) ? "upload" : "idle";
+    session.loginPromptSeen = false;
+    if (session.stage === "review" || session.stage === "signature") {
+      session.stage = "upload";
+      // The official portal may reveal the reusable applicant profile only
+      // after the application form is reviewed. Re-check it on every resume.
+      session.profileFilled = false;
+    } else if (session.stage === "done") {
+      session.stage = hasUploadControls(document) ? "upload" : "idle";
+      session.profileFilled = false;
+    }
   }
   scheduleAdvance(50);
 }
@@ -286,8 +298,21 @@ async function advance(): Promise<void> {
     const adapter = new R11Adapter(document);
     if (hasVisibleLoginPrompt(document)) {
       session.stage = "idle";
+      session.loginPromptSeen = true;
       needUser("login", "login_required");
       return;
+    }
+    if (session.loginPromptSeen) {
+      session.loginPromptSeen = false;
+      progress("login", "login_detected", 10);
+    }
+    if (!session.profileFilled) {
+      try {
+        session.profileFilled = adapter.fillFilingProfile(session.manifest.filingProfile);
+      } catch (error) {
+        fail(adapterErrorCode(error), "application_form");
+        return;
+      }
     }
     if (adapter.isLandingPage() && session.stage === "idle") {
       adapter.openR11Entry();

@@ -641,6 +641,220 @@
         }
       }
     },
+    "/api/filing-profile": {
+      "get": {
+        "tags": [
+          "填报"
+        ],
+        "summary": "获取当前用户的官网填报默认资料",
+        "responses": {
+          "200": {
+            "description": "操作成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/FilingProfile"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "msg",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或登录凭证无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在或不属于当前用户。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "当前资源状态冲突，例如申请已有运行中的生成任务。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "申请或材料尚未满足官方填报前置条件。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器或上游服务处理失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "填报"
+        ],
+        "summary": "保存官网填报默认资料",
+        "description": "允许保存不完整资料；创建自动填报任务前必须补齐地址、邮政编码、联系人和联系电话。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FilingProfileInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "官网填报资料已保存",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/FilingProfile"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "msg",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或登录凭证无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在或不属于当前用户。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "当前资源状态冲突，例如申请已有运行中的生成任务。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "申请或材料尚未满足官方填报前置条件。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器或上游服务处理失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/applications/{id}/materials": {
       "get": {
         "tags": [
@@ -1726,6 +1940,130 @@
         }
       }
     },
+    "/api/applications/{id}/source-archive/review": {
+      "post": {
+        "tags": [
+          "申请"
+        ],
+        "summary": "保存源码核对状态",
+        "description": "确认或跳过当前源码核对；服务端会校验申请版本和源码版本，避免旧反馈覆盖新申请。",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "申请 UUID。"
+            },
+            "required": true,
+            "description": "申请 UUID。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceArchiveReviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "源码核对状态已保存",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ApplicationSourceArchive"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "msg",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或登录凭证无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在或不属于当前用户。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "当前资源状态冲突，例如申请已有运行中的生成任务。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "申请或材料尚未满足官方填报前置条件。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器或上游服务处理失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/enrich": {
       "post": {
         "tags": [
@@ -1841,7 +2179,7 @@
           "生成"
         ],
         "summary": "生成软著材料包",
-        "description": "返回 text/event-stream。完成事件的 data 为 GenerationComplete；失败事件包含 jobId 和 stage。",
+        "description": "服务端读取最新已保存申请和申请级源码包；返回 text/event-stream。完成事件的 data 为 GenerationComplete，失败事件包含 jobId 和 stage。生成过程不会修改申请。",
         "requestBody": {
           "required": true,
           "content": {
@@ -3776,123 +4114,13 @@
         }
       }
     },
-    "/api/source-upload": {
-      "post": {
-        "tags": [
-          "辅助/内部"
-        ],
-        "summary": "创建源码压缩包上传授权",
-        "description": "获得授权后，客户端使用返回的 path 和 token 直接上传到 Supabase Storage。",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SourceUploadRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "源码上传授权已创建",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "code": {
-                      "type": "integer",
-                      "minimum": -9007199254740991,
-                      "maximum": 9007199254740991
-                    },
-                    "msg": {
-                      "type": "string"
-                    },
-                    "data": {
-                      "$ref": "#/components/schemas/SourceUploadAuthorization"
-                    }
-                  },
-                  "required": [
-                    "code",
-                    "msg",
-                    "data"
-                  ],
-                  "additionalProperties": false
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "请求参数无效。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "未登录或登录凭证无效。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在或不属于当前用户。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "当前资源状态冲突，例如申请已有运行中的生成任务。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "申请或材料尚未满足官方填报前置条件。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "服务器或上游服务处理失败。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/source-feedback": {
       "post": {
         "tags": [
           "申请"
         ],
         "summary": "根据源码生成申请信息修正建议",
-        "description": "源码压缩包由客户端先直传到 Supabase Storage；本接口读取后生成建议并删除临时源码。建议必须由用户确认后再写回申请。",
+        "description": "本接口读取当前申请已绑定的持久化源码压缩包并生成建议，不修改申请、不删除源码。建议必须由用户确认后再写回申请。",
         "requestBody": {
           "required": true,
           "content": {
@@ -4087,26 +4315,6 @@
               "copyright_holder",
               "agent"
             ]
-          },
-          "applicant_address": {
-            "type": "string",
-            "maxLength": 20000
-          },
-          "postal_code": {
-            "type": "string",
-            "maxLength": 300
-          },
-          "contact_name": {
-            "type": "string",
-            "maxLength": 300
-          },
-          "contact_phone": {
-            "type": "string",
-            "maxLength": 300
-          },
-          "contact_email": {
-            "type": "string",
-            "maxLength": 300
           },
           "development_hardware": {
             "type": "string",
@@ -4312,6 +4520,29 @@
         "description": "自然人或企业/单位著作权人信息。自然人可以填写出生日期，企业/单位不采集日期字段。",
         "type": "object"
       },
+      "FilingProfileInput": {
+        "type": "object",
+        "properties": {
+          "applicant_address": {
+            "type": "string",
+            "maxLength": 20000
+          },
+          "postal_code": {
+            "type": "string",
+            "maxLength": 300
+          },
+          "contact_name": {
+            "type": "string",
+            "maxLength": 300
+          },
+          "contact_phone": {
+            "type": "string",
+            "maxLength": 300
+          }
+        },
+        "additionalProperties": false,
+        "description": "用户级官网填报默认资料。允许暂存不完整内容，启动填报前必须补齐四项。"
+      },
       "MaterialUploadRequest": {
         "type": "object",
         "properties": {
@@ -4459,6 +4690,35 @@
         ],
         "description": "确认源码压缩包已经直传完成并将其绑定到申请。"
       },
+      "SourceArchiveReviewRequest": {
+        "type": "object",
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "confirmed",
+              "skipped"
+            ]
+          },
+          "applicationUpdatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+          },
+          "sourceUpdatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+          }
+        },
+        "required": [
+          "decision",
+          "applicationUpdatedAt",
+          "sourceUpdatedAt"
+        ],
+        "additionalProperties": false,
+        "description": "确认或跳过当前源码核对，并使用申请和源码版本做并发校验。"
+      },
       "EnrichRequest": {
         "type": "object",
         "properties": {
@@ -4570,37 +4830,14 @@
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "tableTemplate": {
-            "default": "",
-            "type": "string",
-            "maxLength": 300000
-          },
-          "skipAnalyze": {
-            "default": false,
-            "type": "boolean"
-          },
-          "sourceMode": {
-            "type": "string",
-            "enum": [
-              "none",
-              "saved"
-            ]
-          },
-          "sourceObjectKey": {
-            "type": "string",
-            "maxLength": 500
-          },
-          "sourceFileName": {
-            "type": "string",
-            "maxLength": 200
           }
         },
         "required": [
           "applicationId",
           "llmConfigId"
         ],
-        "description": "启动软著材料生成任务。生成接口以 SSE 返回进度事件。"
+        "additionalProperties": false,
+        "description": "启动软著材料生成任务。服务端读取当前已保存申请和申请级源码包，生成接口以 SSE 返回进度事件。"
       },
       "PdfRenderRequest": {
         "type": "object",
@@ -4790,25 +5027,14 @@
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "sourceObjectKey": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 500
-          },
-          "sourceFileName": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 200
           }
         },
         "required": [
           "applicationId",
-          "llmConfigId",
-          "sourceObjectKey",
-          "sourceFileName"
+          "llmConfigId"
         ],
-        "description": "根据用户上传的源码压缩包生成申请信息修正建议。建议需要用户确认后才会写回申请。"
+        "additionalProperties": false,
+        "description": "根据当前申请已保存的源码压缩包生成申请信息修正建议。建议需要用户确认后才会写回申请。"
       },
       "HealthResponse": {
         "type": "object",
@@ -4887,6 +5113,31 @@
         "additionalProperties": false,
         "description": "统一错误响应。"
       },
+      "FilingProfile": {
+        "type": "object",
+        "properties": {
+          "applicant_address": {
+            "type": "string"
+          },
+          "postal_code": {
+            "type": "string"
+          },
+          "contact_name": {
+            "type": "string"
+          },
+          "contact_phone": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "applicant_address",
+          "postal_code",
+          "contact_name",
+          "contact_phone"
+        ],
+        "additionalProperties": false,
+        "description": "当前用户维护的官网填报默认资料，不包含电子邮箱。"
+      },
       "MaterialsResponse": {
         "type": "object",
         "properties": {
@@ -4911,12 +5162,28 @@
                 "type": "integer",
                 "minimum": -9007199254740991,
                 "maximum": 9007199254740991
+              },
+              "filingReady": {
+                "type": "boolean"
+              },
+              "filingRequiredCount": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "filingReadyCount": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
               }
             },
             "required": [
               "complete",
               "requiredCount",
-              "readyCount"
+              "readyCount",
+              "filingReady",
+              "filingRequiredCount",
+              "filingReadyCount"
             ],
             "additionalProperties": false
           }
@@ -5333,6 +5600,9 @@
             "properties": {},
             "additionalProperties": {}
           },
+          "filingProfile": {
+            "$ref": "#/components/schemas/FilingProfile"
+          },
           "materials": {
             "type": "array",
             "items": {
@@ -5346,6 +5616,7 @@
           "adapterVersion",
           "expiresAt",
           "application",
+          "filingProfile",
           "materials"
         ],
         "additionalProperties": false,
@@ -5447,6 +5718,44 @@
           },
           "updatedAt": {
             "type": "string"
+          },
+          "reviewStatus": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "confirmed",
+              "skipped"
+            ]
+          },
+          "reviewedApplicationUpdatedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reviewedSourceUpdatedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reviewedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -5456,7 +5765,11 @@
           "contentType",
           "size",
           "createdAt",
-          "updatedAt"
+          "updatedAt",
+          "reviewStatus",
+          "reviewedApplicationUpdatedAt",
+          "reviewedSourceUpdatedAt",
+          "reviewedAt"
         ],
         "additionalProperties": false,
         "description": "当前申请已绑定、可供失败重试继续使用的源码压缩包。对象键不会返回前端。"

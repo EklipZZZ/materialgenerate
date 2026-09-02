@@ -338,8 +338,8 @@ export function CopyrightFormEditor({ form, onChange, disabled }: Props) {
 
       <section className="form-section">
         <div className="form-section__header">
-          <h2>申请人和联系人</h2>
-          <p>申请人、地址和联系人信息均可暂不填写；如果选择代理人办理，再按实际情况补充。</p>
+          <h2>申请办理方式</h2>
+          <p>申请人地址、邮政编码、联系人和联系电话属于官网填报资料，请在设置中维护默认值。</p>
         </div>
         <div className="form-grid">
           <div className="form-field">
@@ -348,13 +348,8 @@ export function CopyrightFormEditor({ form, onChange, disabled }: Props) {
               <option value="copyright_holder">著作权人申请办理</option><option value="agent">代理人申请办理</option>
             </select>
           </div>
-          {input("postal_code", "邮政编码")}
-          {input("contact_name", "联系人")}
-          {input("contact_phone", "联系电话", "tel")}
-          {input("contact_email", "联系邮箱", "email")}
           <div className="form-field form-field--full">
-            <label className="form-label" htmlFor="applicant_address">申请人地址</label>
-            <Input id="applicant_address" value={form.applicant_address} onChange={(event) => set("applicant_address", event.target.value)} disabled={disabled} />
+            <p className="form-hint">官网自动填报前，系统会检查设置中的四项资料是否完整；不会从本申请或旧申请中自动猜测联系方式。</p>
           </div>
         </div>
       </section>

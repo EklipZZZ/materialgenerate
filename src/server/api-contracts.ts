@@ -69,11 +69,6 @@ export const applicationFields = z.object({
   original_registration_number: shortText.optional(),
   modification_description: longText.optional(),
   application_method: z.enum(["copyright_holder", "agent"]).optional(),
-  applicant_address: longText.optional(),
-  postal_code: shortText.optional(),
-  contact_name: shortText.optional(),
-  contact_phone: shortText.optional(),
-  contact_email: shortText.optional(),
   development_hardware: registrationShortText.optional(),
   runtime_hardware: registrationShortText.optional(),
   development_os: registrationShortText.optional(),
@@ -152,11 +147,28 @@ export const sourceFeedbackFieldSchema = z.enum(SOURCE_FEEDBACK_FIELDS);
 export const sourceFeedbackRequestSchema = z.object({
   applicationId: applicationIdSchema,
   llmConfigId: llmConfigIdSchema,
-  sourceObjectKey: z.string().trim().min(1).max(500),
-  sourceFileName: z.string().trim().min(1).max(200),
-}).meta({
+}).strict().meta({
   id: "SourceFeedbackRequest",
-  description: "根据用户上传的源码压缩包生成申请信息修正建议。建议需要用户确认后才会写回申请。",
+  description: "根据当前申请已保存的源码压缩包生成申请信息修正建议。建议需要用户确认后才会写回申请。",
+});
+
+export const sourceArchiveReviewSchema = z.object({
+  decision: z.enum(["confirmed", "skipped"]),
+  applicationUpdatedAt: z.string().datetime(),
+  sourceUpdatedAt: z.string().datetime(),
+}).strict().meta({
+  id: "SourceArchiveReviewRequest",
+  description: "确认或跳过当前源码核对，并使用申请和源码版本做并发校验。",
+});
+
+export const filingProfileInputSchema = z.object({
+  applicant_address: longText.optional(),
+  postal_code: shortText.optional(),
+  contact_name: shortText.optional(),
+  contact_phone: shortText.optional(),
+}).strict().meta({
+  id: "FilingProfileInput",
+  description: "用户级官网填报默认资料。允许暂存不完整内容，启动填报前必须补齐四项。",
 });
 
 export const sourceFeedbackSuggestionResponseSchema = z.object({
@@ -192,14 +204,9 @@ export const enrichRequestSchema = z.object({
 export const generateRequestSchema = z.object({
   applicationId: applicationIdSchema,
   llmConfigId: llmConfigIdSchema,
-  tableTemplate: z.string().max(300_000).optional().default(""),
-  skipAnalyze: z.boolean().optional().default(false),
-  sourceMode: z.enum(["none", "saved"]).optional(),
-  sourceObjectKey: z.string().trim().max(500).optional(),
-  sourceFileName: z.string().trim().max(200).optional(),
-}).meta({
+}).strict().meta({
   id: "GenerateRequest",
-  description: "启动软著材料生成任务。生成接口以 SSE 返回进度事件。",
+  description: "启动软著材料生成任务。服务端读取当前已保存申请和申请级源码包，生成接口以 SSE 返回进度事件。",
 });
 
 export const pdfRenderRequestSchema = z.object({

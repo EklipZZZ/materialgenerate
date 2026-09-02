@@ -8,6 +8,7 @@ import {
 } from "@/server/applications";
 import { getSupabaseAdmin } from "@/server/config";
 import { deleteObjects } from "@/server/storage";
+import { invalidateOwnedSourceArchiveReview } from "@/server/source-archives";
 import { errorResponse, fail, ok, requireUser } from "@/server/http";
 
 export const runtime = "nodejs";
@@ -56,6 +57,7 @@ export async function PUT(request: NextRequest, context: Context) {
     if (parsed.data.holders !== undefined) {
       await replaceOwnedHolders(id, user.id, parsed.data.holders);
     }
+    await invalidateOwnedSourceArchiveReview(id, user.id);
     const updated = await getOwnedApplication(id, user.id);
     return updated ? ok(effectiveApplication(updated), "更新成功") : fail(404, "申请不存在");
   } catch (error) {

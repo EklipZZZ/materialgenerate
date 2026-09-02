@@ -1,4 +1,5 @@
 import type { CopyrightFormData } from "./copyright-form";
+import type { FilingProfile } from "./filing-profile";
 import type { MaterialKind } from "./materials";
 
 export const FILING_PROTOCOL = "softreg-filing/v1" as const;
@@ -85,6 +86,7 @@ export type FilingManifest = {
   adapterVersion: string;
   expiresAt: string;
   application: CopyrightFormData;
+  filingProfile: FilingProfile;
   materials: FilingMaterialManifest[];
 };
 
@@ -136,7 +138,14 @@ function looksLikeUuid(value: unknown): value is string {
 
 export function isFilingManifest(value: unknown): value is FilingManifest {
   if (!isRecord(value) || !looksLikeUuid(value.jobId) || value.targetUrl !== R11_URL || typeof value.adapterVersion !== "string" || typeof value.expiresAt !== "string") return false;
-  if (!isRecord(value.application) || !Array.isArray(value.materials) || value.materials.length > 10) return false;
+  if (!isRecord(value.application) || !isRecord(value.filingProfile) || !Array.isArray(value.materials) || value.materials.length > 10) return false;
+  const profile = value.filingProfile;
+  if (!Object.entries({
+    applicant_address: profile.applicant_address,
+    postal_code: profile.postal_code,
+    contact_name: profile.contact_name,
+    contact_phone: profile.contact_phone,
+  }).every(([, item]) => typeof item === "string" && item.trim().length > 0 && item.length <= 20_000)) return false;
   const expiry = Date.parse(value.expiresAt);
   if (!Number.isFinite(expiry) || expiry <= Date.now()) return false;
   return value.materials.every((item) => {
