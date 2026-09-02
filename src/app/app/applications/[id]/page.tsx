@@ -16,6 +16,7 @@ import {
 import { AppShell, PageHeader, Panel, StatusBadge } from "@/components/app-shell";
 import { useAuth } from "@/components/auth-provider";
 import { CopyrightFormEditor } from "@/components/copyright-form-editor";
+import { FilingPanel } from "@/components/filing-panel";
 import { SourceFeedbackPanel } from "@/components/source-feedback-panel";
 import { Button } from "@/components/ui/button";
 import {
@@ -245,6 +246,14 @@ export default function ApplicationEditPage() {
                 {!byok?.id && <p className="form-hint app-side-hint">生成前需要先在设置中保存 AI 模型配置。</p>}
                 {!byok?.id && <Link className="app-inline-link" href="/settings/llm-keys">前往 AI 配置设置 <ArrowLeft size={13} className="app-arrow-forward" /></Link>}
               </div>
+            </Panel>
+            <Panel>
+              <FilingPanel
+                applicationId={id}
+                holderCount={form.copyright_holders.length}
+                developmentMethod={form.development_method}
+                softwareName={form.software_full_name}
+              />
             </Panel>
           </div>
         </div>

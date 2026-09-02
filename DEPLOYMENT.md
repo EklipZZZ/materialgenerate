@@ -2,13 +2,14 @@
 
 ## 1. Supabase
 
-如果前 3 个迁移文件已经执行过，只需执行新增的第 4 个迁移。迁移使用 `if not exists`、约束和幂等回填逻辑，正常部署按文件名顺序执行一次即可：
+如果前 4 个迁移文件已经执行过，只需执行新增的第 5 个迁移。迁移使用 `if not exists`、约束和幂等回填逻辑，正常部署按文件名顺序执行一次即可：
 
 ```text
 supabase/migrations/20260825000100_create_softreg_tables.sql
 supabase/migrations/20260825000200_add_softreg_indexes.sql
 supabase/migrations/20260825000300_enable_softreg_rls.sql
 supabase/migrations/20260829000400_add_copyright_workflow.sql
+supabase/migrations/20260902000600_add_filing_jobs.sql
 ```
 
 在 Supabase Storage 创建私有 Bucket：
@@ -73,6 +74,15 @@ DOCX_PDF_CONVERTER_URL=<LibreOffice 转换服务 HTTPS 地址>
 LLM_CONFIG_ENCRYPTION_KEY=<32 字节密钥的 base64 或 64 位 hex>
 LLM_REQUEST_TIMEOUT_MS=120000
 ```
+
+构建 Chrome 扩展时另外设置（不是 Vercel 服务端密钥）：
+
+```text
+SOFTREG_APP_ORIGIN=https://ipgen.top
+SOFTREG_STORAGE_ORIGIN=https://<your-project>.supabase.co
+```
+
+然后在项目根目录运行 `pnpm extension:package`，将生成的 zip 作为内测包；普通用户无需安装 Node、Python、Selenium 或常驻本机服务。正式发布前应改为 Chrome Web Store 未公开链接或公开版本。
 
 可以在 PowerShell 生成转换服务密钥：
 
@@ -148,4 +158,5 @@ pnpm build
 - 生成文件保存在 Supabase 私有 Bucket，下载 URL 只有 15 分钟有效期。
 - `llm_configs` 表保存 AES-256-GCM 密文、IV、认证标签、密钥版本和末四位，不返回完整 API Key。
 - 生成任务状态和材料状态写入 Supabase；前台 SSE 中断后可看到失败记录并重新生成，但本阶段没有后台队列。
+- 填报任务状态和事件写入 Supabase；扩展只在网页打开期间协作，扩展重启后通过“继续填报”重新签发材料链接。
 - 本项目不再需要 Railway、Render、Cloudflare Pages 或 Cloudflare Worker。

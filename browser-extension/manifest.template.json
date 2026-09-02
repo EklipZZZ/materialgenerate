@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "软著申报助手填报扩展",
+  "description": "在中国版权保护中心 R11 页面辅助填写软著申请并上传材料。登录、验证码、签章和最终提交由用户完成。",
+  "version": "0.1.0",
+  "permissions": [],
+  "host_permissions": [
+    "__APP_ORIGIN__/*",
+    "https://register.ccopyright.com.cn/*",
+    "__STORAGE_ORIGIN__/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["__APP_ORIGIN__/*"],
+      "js": ["app-bridge.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://register.ccopyright.com.cn/*"],
+      "js": ["official-content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "软著自动填报"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
+}

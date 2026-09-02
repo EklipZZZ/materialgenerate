@@ -25,6 +25,10 @@
       "description": "申请信息补全、材料生成和任务状态。"
     },
     {
+      "name": "填报",
+      "description": "Chrome 扩展辅助官方页面填报和材料上传。"
+    },
+    {
       "name": "模型配置",
       "description": "当前用户的 LLM 配置。"
     },
@@ -162,6 +166,16 @@
               }
             }
           },
+          "422": {
+            "description": "申请或材料尚未满足官方填报前置条件。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
           "500": {
             "description": "服务器或上游服务处理失败。",
             "content": {
@@ -251,6 +265,16 @@
           },
           "409": {
             "description": "当前资源状态冲突，例如申请已有运行中的生成任务。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "申请或材料尚未满足官方填报前置条件。",
             "content": {
               "application/json": {
                 "schema": {
@@ -354,6 +378,16 @@
           },
           "409": {
             "description": "当前资源状态冲突，例如申请已有运行中的生成任务。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "申请或材料尚未满足官方填报前置条件。",
             "content": {
               "application/json": {
                 "schema": {
@@ -473,6 +507,16 @@
               }
             }
           },
+          "422": {
+            "description": "申请或材料尚未满足官方填报前置条件。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
           "500": {
             "description": "服务器或上游服务处理失败。",
             "content": {
@@ -566,6 +610,16 @@
           },
           "409": {
             "description": "当前资源状态冲突，例如申请已有运行中的生成任务。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "申请或材料尚未满足官方填报前置条件。",
             "content": {
               "application/json": {
                 "schema": {
@@ -669,6 +723,16 @@
           },
           "409": {
             "description": "当前资源状态冲突，例如申请已有运行中的生成任务。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "申请或材料尚未满足官方填报前置条件。",
             "content": {
               "application/json": {
                 "schema": {
@@ -790,6 +854,16 @@
               }
             }
           },
+          "422": {
+            "description": "申请或材料尚未满足官方填报前置条件。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
           "500": {
             "description": "服务器或上游服务处理失败。",
             "content": {
@@ -895,6 +969,16 @@
           },
           "409": {
             "description": "当前资源状态冲突，例如申请已有运行中的生成任务。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "申请或材料尚未满足官方填报前置条件。",
             "content": {
               "application/json": {
                 "schema": {
@@ -1018,6 +1102,140 @@
               }
             }
           },
+          "422": {
+            "description": "申请或材料尚未满足官方填报前置条件。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器或上游服务处理失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/applications/{id}/filing-jobs": {
+      "post": {
+        "tags": [
+          "填报"
+        ],
+        "summary": "创建官方网页辅助填报任务",
+        "description": "创建任务并返回仅在当前页面使用的申请数据和短期材料下载地址。不会执行登录、验证码、签章或最终提交。",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "申请 UUID。"
+            },
+            "required": true,
+            "description": "申请 UUID。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FilingJobCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "填报任务已创建",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/FilingStartResponse"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "msg",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或登录凭证无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在或不属于当前用户。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "当前资源状态冲突，例如申请已有运行中的生成任务。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "申请或材料尚未满足官方填报前置条件。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
           "500": {
             "description": "服务器或上游服务处理失败。",
             "content": {
@@ -1128,6 +1346,16 @@
               }
             }
           },
+          "422": {
+            "description": "申请或材料尚未满足官方填报前置条件。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
           "500": {
             "description": "服务器或上游服务处理失败。",
             "content": {
@@ -1221,6 +1449,16 @@
           },
           "409": {
             "description": "当前资源状态冲突，例如申请已有运行中的生成任务。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "申请或材料尚未满足官方填报前置条件。",
             "content": {
               "application/json": {
                 "schema": {
@@ -1342,6 +1580,16 @@
               }
             }
           },
+          "422": {
+            "description": "申请或材料尚未满足官方填报前置条件。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
           "500": {
             "description": "服务器或上游服务处理失败。",
             "content": {
@@ -1455,6 +1703,16 @@
               }
             }
           },
+          "422": {
+            "description": "申请或材料尚未满足官方填报前置条件。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
           "500": {
             "description": "服务器或上游服务处理失败。",
             "content": {
@@ -1554,6 +1812,16 @@
               }
             }
           },
+          "422": {
+            "description": "申请或材料尚未满足官方填报前置条件。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
           "500": {
             "description": "服务器或上游服务处理失败。",
             "content": {
@@ -1628,6 +1896,16 @@
           },
           "409": {
             "description": "当前资源状态冲突，例如申请已有运行中的生成任务。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "申请或材料尚未满足官方填报前置条件。",
             "content": {
               "application/json": {
                 "schema": {
@@ -1715,6 +1993,16 @@
           },
           "409": {
             "description": "当前资源状态冲突，例如申请已有运行中的生成任务。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "申请或材料尚未满足官方填报前置条件。",
             "content": {
               "application/json": {
                 "schema": {
@@ -1833,6 +2121,16 @@
               }
             }
           },
+          "422": {
+            "description": "申请或材料尚未满足官方填报前置条件。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
           "500": {
             "description": "服务器或上游服务处理失败。",
             "content": {
@@ -1936,6 +2234,748 @@
               }
             }
           },
+          "422": {
+            "description": "申请或材料尚未满足官方填报前置条件。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器或上游服务处理失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/filing-jobs/{id}": {
+      "get": {
+        "tags": [
+          "填报"
+        ],
+        "summary": "获取填报任务及事件",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "填报任务 UUID。"
+            },
+            "required": true,
+            "description": "填报任务 UUID。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "操作成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/FilingJobWithEvents"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "msg",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或登录凭证无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在或不属于当前用户。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "当前资源状态冲突，例如申请已有运行中的生成任务。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "申请或材料尚未满足官方填报前置条件。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器或上游服务处理失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/filing-jobs": {
+      "get": {
+        "tags": [
+          "填报"
+        ],
+        "summary": "获取申请最近一次填报任务",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "applicationId",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "申请 UUID。"
+            },
+            "required": true,
+            "description": "申请 UUID。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "操作成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/FilingJob"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "msg",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或登录凭证无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在或不属于当前用户。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "当前资源状态冲突，例如申请已有运行中的生成任务。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "申请或材料尚未满足官方填报前置条件。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器或上游服务处理失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/filing-jobs/{id}/events": {
+      "get": {
+        "tags": [
+          "填报"
+        ],
+        "summary": "获取填报任务事件",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "填报任务 UUID。"
+            },
+            "required": true,
+            "description": "填报任务 UUID。"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "操作成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/FilingJobWithEvents"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "msg",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或登录凭证无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在或不属于当前用户。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "当前资源状态冲突，例如申请已有运行中的生成任务。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "申请或材料尚未满足官方填报前置条件。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器或上游服务处理失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "填报"
+        ],
+        "summary": "记录扩展填报事件",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "填报任务 UUID。"
+            },
+            "required": true,
+            "description": "填报任务 UUID。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FilingJobEventRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "填报事件已记录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "job": {
+                          "$ref": "#/components/schemas/FilingJob"
+                        }
+                      },
+                      "required": [
+                        "job"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "msg",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或登录凭证无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在或不属于当前用户。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "当前资源状态冲突，例如申请已有运行中的生成任务。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "申请或材料尚未满足官方填报前置条件。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器或上游服务处理失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/filing-jobs/{id}/resume": {
+      "post": {
+        "tags": [
+          "填报"
+        ],
+        "summary": "恢复填报任务",
+        "description": "重新校验当前申请和材料，并重新生成短期下载地址。",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "填报任务 UUID。"
+            },
+            "required": true,
+            "description": "填报任务 UUID。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FilingJobResumeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "填报任务已准备恢复",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/FilingStartResponse"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "msg",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或登录凭证无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在或不属于当前用户。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "当前资源状态冲突，例如申请已有运行中的生成任务。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "申请或材料尚未满足官方填报前置条件。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务器或上游服务处理失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/filing-jobs/{id}/cancel": {
+      "post": {
+        "tags": [
+          "填报"
+        ],
+        "summary": "取消填报任务",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "填报任务 UUID。"
+            },
+            "required": true,
+            "description": "填报任务 UUID。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FilingJobCancelRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "填报任务已取消",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "job": {
+                          "$ref": "#/components/schemas/FilingJob"
+                        }
+                      },
+                      "required": [
+                        "job"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "msg",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或登录凭证无效。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在或不属于当前用户。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "当前资源状态冲突，例如申请已有运行中的生成任务。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "申请或材料尚未满足官方填报前置条件。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
           "500": {
             "description": "服务器或上游服务处理失败。",
             "content": {
@@ -2020,6 +3060,16 @@
           },
           "409": {
             "description": "当前资源状态冲突，例如申请已有运行中的生成任务。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "申请或材料尚未满足官方填报前置条件。",
             "content": {
               "application/json": {
                 "schema": {
@@ -2158,6 +3208,16 @@
               }
             }
           },
+          "422": {
+            "description": "申请或材料尚未满足官方填报前置条件。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
           "500": {
             "description": "服务器或上游服务处理失败。",
             "content": {
@@ -2242,6 +3302,16 @@
           },
           "409": {
             "description": "当前资源状态冲突，例如申请已有运行中的生成任务。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "申请或材料尚未满足官方填报前置条件。",
             "content": {
               "application/json": {
                 "schema": {
@@ -2339,6 +3409,16 @@
           },
           "409": {
             "description": "当前资源状态冲突，例如申请已有运行中的生成任务。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "申请或材料尚未满足官方填报前置条件。",
             "content": {
               "application/json": {
                 "schema": {
@@ -2450,6 +3530,16 @@
               }
             }
           },
+          "422": {
+            "description": "申请或材料尚未满足官方填报前置条件。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
           "500": {
             "description": "服务器或上游服务处理失败。",
             "content": {
@@ -2545,6 +3635,16 @@
           },
           "409": {
             "description": "当前资源状态冲突，例如申请已有运行中的生成任务。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "申请或材料尚未满足官方填报前置条件。",
             "content": {
               "application/json": {
                 "schema": {
@@ -2653,6 +3753,16 @@
               }
             }
           },
+          "422": {
+            "description": "申请或材料尚未满足官方填报前置条件。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
           "500": {
             "description": "服务器或上游服务处理失败。",
             "content": {
@@ -2753,6 +3863,16 @@
               }
             }
           },
+          "422": {
+            "description": "申请或材料尚未满足官方填报前置条件。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
           "500": {
             "description": "服务器或上游服务处理失败。",
             "content": {
@@ -2845,6 +3965,16 @@
           },
           "409": {
             "description": "当前资源状态冲突，例如申请已有运行中的生成任务。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "申请或材料尚未满足官方填报前置条件。",
             "content": {
               "application/json": {
                 "schema": {
@@ -3250,6 +4380,27 @@
         ],
         "description": "确认材料已通过 Supabase signed upload 上传。"
       },
+      "FilingJobCreateRequest": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "default": "fill_and_upload",
+            "type": "string",
+            "const": "fill_and_upload"
+          },
+          "browser": {
+            "default": "chrome",
+            "type": "string",
+            "const": "chrome"
+          },
+          "extensionVersion": {
+            "type": "string",
+            "maxLength": 40
+          }
+        },
+        "additionalProperties": false,
+        "description": "创建 Chrome 扩展辅助填报任务。登录、验证码、签章和最终提交由用户完成。"
+      },
       "SourceArchiveUploadRequest": {
         "description": "为指定申请创建可持久化源码压缩包的上传授权。",
         "$ref": "#/components/schemas/SourceUploadRequest"
@@ -3485,6 +4636,93 @@
           "version"
         ],
         "description": "内部 PDF 渲染请求，由生成任务使用共享密钥调用。"
+      },
+      "FilingJobEventRequest": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "EXTENSION_READY",
+              "FILING_PROGRESS",
+              "FILING_NEEDS_USER",
+              "FILING_FAILED",
+              "FILING_COMPLETED"
+            ]
+          },
+          "step": {
+            "type": "string",
+            "enum": [
+              "pairing",
+              "opening_portal",
+              "login",
+              "r11_entry",
+              "application_form",
+              "review",
+              "materials",
+              "signature_page",
+              "waiting_user",
+              "completed"
+            ]
+          },
+          "code": {
+            "type": "string",
+            "enum": [
+              "extension_ready",
+              "portal_opened",
+              "login_required",
+              "login_detected",
+              "form_started",
+              "form_filled",
+              "review_required",
+              "materials_ready",
+              "upload_started",
+              "upload_completed",
+              "signature_page_required",
+              "manual_upload_required",
+              "unsupported_development_method",
+              "field_not_found",
+              "field_ambiguous",
+              "field_verification_failed",
+              "portal_structure_changed",
+              "extension_disconnected",
+              "cancelled_by_user",
+              "completed",
+              "unknown_error"
+            ]
+          },
+          "progress": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "extensionVersion": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "retryable": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "type",
+          "step",
+          "code"
+        ],
+        "additionalProperties": false,
+        "description": "Chrome 扩展上报的脱敏填报事件，不接受页面原文、用户证件或文件内容。"
+      },
+      "FilingJobResumeRequest": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false,
+        "description": "恢复填报并重新生成短期材料下载地址。"
+      },
+      "FilingJobCancelRequest": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false,
+        "description": "取消当前填报任务。"
       },
       "LlmConfigWriteRequest": {
         "type": "object",
@@ -3859,6 +5097,327 @@
         "additionalProperties": false,
         "description": "材料直传 Supabase Storage 所需的临时授权。"
       },
+      "FilingStartResponse": {
+        "type": "object",
+        "properties": {
+          "job": {
+            "$ref": "#/components/schemas/FilingJob"
+          },
+          "manifest": {
+            "$ref": "#/components/schemas/FilingManifest"
+          }
+        },
+        "required": [
+          "job",
+          "manifest"
+        ],
+        "additionalProperties": false
+      },
+      "FilingJob": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "application_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "created",
+              "waiting_extension",
+              "opening_portal",
+              "waiting_login",
+              "filling",
+              "waiting_review",
+              "uploading",
+              "waiting_user",
+              "completed",
+              "failed",
+              "cancelled"
+            ]
+          },
+          "current_step": {
+            "type": "string",
+            "enum": [
+              "pairing",
+              "opening_portal",
+              "login",
+              "r11_entry",
+              "application_form",
+              "review",
+              "materials",
+              "signature_page",
+              "waiting_user",
+              "completed"
+            ]
+          },
+          "progress": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "adapter_version": {
+            "type": "string"
+          },
+          "extension_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "browser": {
+            "type": "string",
+            "enum": [
+              "chrome",
+              "edge"
+            ]
+          },
+          "input_application_updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "input_materials": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "source_code_docx",
+                    "source_code_pdf",
+                    "user_manual_docx",
+                    "user_manual_pdf",
+                    "application_summary_pdf",
+                    "cooperation_agreement",
+                    "signature_page",
+                    "holder_identity_proof",
+                    "commission_agreement",
+                    "task_order"
+                  ]
+                },
+                "checksum": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "kind",
+                "checksum"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "user_id",
+          "application_id",
+          "status",
+          "current_step",
+          "progress",
+          "adapter_version",
+          "extension_version",
+          "browser",
+          "input_application_updated_at",
+          "input_materials",
+          "error_code",
+          "error_message",
+          "started_at",
+          "completed_at",
+          "created_at",
+          "updated_at"
+        ],
+        "additionalProperties": false,
+        "description": "Chrome 扩展辅助填报任务；不包含密码、签名 URL 或完整表单快照。"
+      },
+      "FilingManifest": {
+        "type": "object",
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "targetUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "adapterVersion": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "application": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": {}
+          },
+          "materials": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FilingMaterialManifest"
+            }
+          }
+        },
+        "required": [
+          "jobId",
+          "targetUrl",
+          "adapterVersion",
+          "expiresAt",
+          "application",
+          "materials"
+        ],
+        "additionalProperties": false,
+        "description": "发给已安装扩展的本次填报数据和短期材料下载地址。"
+      },
+      "FilingMaterialManifest": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "source_code_docx",
+              "source_code_pdf",
+              "user_manual_docx",
+              "user_manual_pdf",
+              "application_summary_pdf",
+              "cooperation_agreement",
+              "signature_page",
+              "holder_identity_proof",
+              "commission_agreement",
+              "task_order"
+            ]
+          },
+          "fileName": {
+            "type": "string"
+          },
+          "mimeType": {
+            "type": "string"
+          },
+          "sizeBytes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "checksum": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "downloadUrl": {
+            "type": "string",
+            "format": "uri"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "fileName",
+          "mimeType",
+          "sizeBytes",
+          "checksum",
+          "downloadUrl"
+        ],
+        "additionalProperties": false
+      },
       "ApplicationSourceArchive": {
         "type": "object",
         "properties": {
@@ -4108,6 +5667,100 @@
           "job_id",
           "step",
           "message",
+          "created_at"
+        ],
+        "additionalProperties": false
+      },
+      "FilingJobWithEvents": {
+        "type": "object",
+        "properties": {
+          "job": {
+            "$ref": "#/components/schemas/FilingJob"
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FilingEvent"
+            }
+          }
+        },
+        "required": [
+          "job",
+          "events"
+        ],
+        "additionalProperties": false
+      },
+      "FilingEvent": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "job_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "step": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 100
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "extension_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "user_id",
+          "job_id",
+          "step",
+          "code",
+          "progress",
+          "extension_version",
+          "metadata",
           "created_at"
         ],
         "additionalProperties": false

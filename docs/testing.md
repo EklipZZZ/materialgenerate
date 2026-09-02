@@ -123,6 +123,19 @@ pnpm build
 
 （10）转换容器冷启动时，Vercel 能等待或重试，失败时不回退到 PDFKit。
 
+### Chrome 扩展填报
+
+运行扩展检查和模拟 R11 页面测试：
+
+```bash
+pnpm extension:check
+pnpm extension:build
+node --experimental-strip-types --test test/filing-extension.test.ts
+pnpm extension:package
+```
+
+测试使用本地模拟 DOM，不登录真实版权中心，也不点击最终提交。覆盖个人、企业/单位、多人合作和混合著作权人；覆盖登录暂停、字段定位不唯一、PDF/协议分块注入和签章页等待。真实官网只允许人工登录后的非提交冒烟测试。
+
 ## Supabase 隔离验收
 
 准备两个已验证邮箱的测试用户：

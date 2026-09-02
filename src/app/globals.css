@@ -1765,6 +1765,145 @@ textarea:focus-visible {
   color: var(--app-warning);
 }
 
+.filing-panel {
+  padding: 20px;
+}
+
+.filing-panel__header,
+.filing-panel__meta,
+.filing-panel__actions,
+.filing-progress__top,
+.filing-event {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.filing-panel__header {
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  border-bottom: 1px solid var(--app-border);
+  padding-bottom: 15px;
+}
+
+.filing-connection {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--app-border-strong);
+  border-radius: 999px;
+  padding: 4px 8px;
+  color: var(--app-text-subtle);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.filing-connection--ready {
+  border-color: #b9e6da;
+  color: var(--app-brand-light);
+}
+
+.filing-panel__notice,
+.filing-panel__help {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin-top: 15px;
+  border-radius: 6px;
+  padding: 10px;
+  color: var(--app-text-muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.filing-panel__notice {
+  background: var(--app-surface-subtle);
+}
+
+.filing-panel__notice svg,
+.filing-panel__help svg {
+  flex: 0 0 auto;
+  color: var(--app-brand-light);
+}
+
+.filing-panel__meta {
+  flex-wrap: wrap;
+  margin-top: 14px;
+  color: var(--app-text-subtle);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.filing-panel__meta strong {
+  color: var(--app-text-muted);
+  font-weight: 600;
+}
+
+.filing-panel__meta a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--app-brand-light);
+  text-decoration: none;
+}
+
+.filing-progress {
+  margin-top: 18px;
+}
+
+.filing-progress__top {
+  justify-content: space-between;
+  color: var(--app-text);
+  font-size: 11px;
+}
+
+.filing-progress__top span {
+  color: var(--app-brand-light);
+  font-variant-numeric: tabular-nums;
+}
+
+.filing-progress .app-progress-track {
+  margin-top: 8px;
+}
+
+.filing-progress p {
+  margin: 8px 0 0;
+  color: var(--app-text-muted);
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.filing-panel__actions {
+  flex-wrap: wrap;
+  margin-top: 17px;
+}
+
+.filing-events {
+  display: grid;
+  gap: 7px;
+  margin-top: 15px;
+  border-top: 1px solid var(--app-border);
+  padding-top: 13px;
+}
+
+.filing-event {
+  color: var(--app-text-muted);
+  font-size: 10px;
+}
+
+.filing-event svg {
+  flex: 0 0 auto;
+  color: var(--app-brand-light);
+}
+
+.filing-event time {
+  margin-left: auto;
+  color: var(--app-text-subtle);
+  font-variant-numeric: tabular-nums;
+}
+
 .form-actions {
   display: flex;
   align-items: center;

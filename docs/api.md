@@ -281,6 +281,44 @@ data: {"step":"source_code","message":"正在生成源代码文档…","data":{}
 
 `/api/pdf` 是旧版内部 PDFKit 兼容接口，不再进入正式材料生成链路。正式链路先生成 DOCX，再由独立 LibreOffice 服务的 `POST /convert/docx-to-pdf` 转换。该外部接口接收原始 DOCX 二进制，使用 `x-converter-secret` 鉴权并返回 `application/pdf`；前端不得直接调用，日志不得记录共享密钥、请求正文或用户文件名。
 
+## 官方网页填报
+
+Chrome 扩展相关接口只由已登录的网页应用调用。扩展本身不携带 Supabase Token；网页桥接脚本把扩展事件转发给下面的鉴权接口。
+
+### `POST /api/applications/{id}/filing-jobs`
+
+检查申请字段、著作权人和源代码/用户手册 PDF，并创建一个活动填报任务。合作开发必须已经上传合作开发协议。成功响应包含 `job` 和本次任务专用的 `manifest`：manifest 包含当前表单、材料 ID/元数据和约 14 分钟有效的 Storage 下载地址（服务端预留过期缓冲）。响应不会包含 Supabase Token、API Key 或密码。
+
+请求示例：
+
+```json
+{
+  "mode": "fill_and_upload",
+  "browser": "chrome",
+  "extensionVersion": "0.1.0"
+}
+```
+
+### `GET /api/filing-jobs?applicationId={applicationId}`
+
+读取当前申请最近一次填报任务，不返回 manifest 或下载地址。
+
+### `GET /api/filing-jobs/{id}`
+
+读取当前用户的填报任务和脱敏事件。
+
+### `POST /api/filing-jobs/{id}/events`
+
+记录扩展上报的固定步骤和错误码，例如 `login_required`、`review_required`、`field_ambiguous`、`signature_page_required` 和 `completed`。接口不接受页面原文、身份证号、统一社会信用代码、地址、联系方式、文件内容或任意下载 URL。
+
+### `POST /api/filing-jobs/{id}/resume`
+
+重新校验当前申请和材料并生成新的 manifest。适用于人工复核、签章页上传或扩展重启后的继续填报。
+
+### `POST /api/filing-jobs/{id}/cancel`
+
+取消当前活动任务。取消不会替用户提交官方申请。
+
 ## 安全边界
 
 接口只允许当前认证用户访问自己的申请、材料、任务、历史和模型配置。Supabase service role key 只能在服务端环境变量中使用，不能写入客户端代码或文档示例。

@@ -89,6 +89,20 @@ queued → running → completed
 
 典型阶段包括 `queued`、`init`、`analyze`、`source_code`、`manual`、`convert`、`upload` 和 `complete`。阶段事件同时写入数据库和 SSE 流。
 
+### filing_jobs 与 filing_events
+
+`filing_jobs` 表示一次 Chrome 扩展辅助 R11 填报任务，`filing_events` 保存脱敏步骤事件。填报任务状态为：
+
+```text
+created → waiting_extension → opening_portal → waiting_login → filling
+                                                        ↓
+                         waiting_review → uploading → waiting_user → completed
+```
+
+`failed` 和 `cancelled` 是终态，允许重新建立任务。活动状态按申请使用部分唯一索引限制为一个。任务只保存申请更新时间、材料 ID/类型/校验值、扩展版本、步骤和错误码，不保存签名下载 URL、密码或完整表单快照。短期材料下载地址只在创建和恢复响应中返回。
+
+扩展可在 `waiting_login`、`waiting_review` 和 `waiting_user` 暂停。`signature_page_required` 表示用户需要从官方系统取得签章页、打印签章后上传回本系统；`completed` 仅表示扩展完成填写和上传，不代表官方登记已经提交。
+
 ### application_source_archives
 
 保存当前申请可用于材料生成的源码压缩包。每个申请最多一条记录，Storage 对象键使用 ASCII UUID，数据库单独保留用户看到的原始文件名、类型和大小。任务失败时记录和对象继续保留，页面刷新后仍能选择使用；使用该源码成功生成后自动清理。所有查询、替换和删除同时校验 `application_id` 与 `user_id`。

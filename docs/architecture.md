@@ -22,12 +22,18 @@ Next.js App Router
           │    ├─ application_materials
           │    ├─ application_source_archives
           │    ├─ generation_jobs / job_events
+          │    ├─ filing_jobs / filing_events
           │    ├─ generation_records
           │    └─ llm_configs
           │
           └─ Supabase Storage
                └─ 私有 generated-documents Bucket
 ```
+
+Chrome MV3 扩展（用户本机）
+  ├─ 网页桥接 content script（只接受当前应用 origin）
+  ├─ Service Worker（标签页、分块文件传输和短期内存任务状态）
+  └─ R11 content script（语义 DOM 定位、写入校验和人工暂停）
 
 主应用部署目标仍是 Vercel + Supabase。业务 API 使用 Node.js runtime；LibreOffice 放在独立、可休眠的低权限 Docker 转换服务中，服务只处理短期 DOCX/PDF，不持有数据库或 Supabase 全局权限。
 
@@ -60,6 +66,14 @@ Authorization: Bearer <supabase-access-token>
 Route Handler 使用 Supabase 服务端客户端验证 token。数据库层对用户数据表启用 RLS，策略同时检查认证用户的 `auth.uid()` 和行的 `user_id`。
 
 当前服务端查询还显式加入用户条件，这是 RLS 之外的第二层隔离。材料下载链接有效期为 15 分钟，Storage Bucket 保持私有。
+
+## 官方网页填报边界
+
+填报任务由 `filing_jobs` / `filing_events` 持久化。网页应用在创建或恢复任务时重新读取申请和材料，并签发短期下载地址；任务表只保存申请更新时间、材料 ID/校验值和状态，不保存签名 URL、密码或完整表单快照。
+
+Chrome 扩展通过页面 `postMessage` 与网页应用通信，再由 Service Worker 打开官方 R11 页面并把脱敏步骤事件转回应用。扩展只允许当前配置的应用 origin、版权中心官网和 Supabase Storage origin；不申请 Cookie、历史记录、密码读取、Native Messaging 或远程脚本权限。申请字段和材料在发送给扩展前必须经过网页中的明确确认。
+
+R11 适配器只使用可见标签、ARIA、字段名称和附近语义容器定位控件，并在写入后读取校验。字段缺失、定位不唯一、文件控件拒绝注入或页面结构变化都会安全暂停。登录、验证码、短信/实名验证、签章页的下载打印签章和最终提交永远停留在人工作业。
 
 ## 申请和著作权人流程
 
@@ -128,6 +142,18 @@ LibreOffice 直接读取已验证的 DOCX，从而保留 Word 文档中的页眉
 
 `sessionStorage` 只作为浏览器便利缓存，不是配置的真实来源。真实配置来源是数据库。
 
-## 未来浏览器自动化边界
+## 扩展任务流程
 
-官方网页自动填报不属于当前架构实现。未来接入时应将其视为独立的浏览器执行层，输入来自本系统的申请和材料 API，输出是步骤状态、人工确认点和上传结果。登录、验证码、签名、盖章和最终提交必须保留明确的人工确认边界，不能把当前材料生成 API 误认为官方提交 API。
+```text
+网页确认并创建 filing_job
+  → 扩展打开 R11
+  → 用户手动登录/验证码/实名
+  → 扩展填写申请表
+  → 人工复核后点击继续
+  → 扩展分块下载并上传 PDF/协议
+  → 官方生成签章页，用户打印签章并回传网页应用
+  → 用户点击继续，扩展上传签章页
+  → 自动化完成，停在最终提交前
+```
+
+扩展测试使用本地模拟页面和 Playwright；真实官网只进行人工登录后的非提交冒烟测试。

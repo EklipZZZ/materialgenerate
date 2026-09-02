@@ -32,6 +32,11 @@ test("OpenAPI document describes the softreg contract", () => {
   assert.ok(document.paths["/api/applications/{id}/source-archive/upload-url"]?.post);
   assert.ok(document.paths["/api/applications/{id}/source-archive/complete"]?.post);
   assert.ok(document.paths["/api/llm-configs/{id}/test"]?.post);
+  assert.ok(document.paths["/api/applications/{id}/filing-jobs"]?.post);
+  assert.ok(document.paths["/api/filing-jobs"]?.get);
+  assert.ok(document.paths["/api/filing-jobs/{id}/events"]?.post);
+  assert.ok(document.paths["/api/filing-jobs/{id}/resume"]?.post);
+  assert.ok(document.paths["/api/filing-jobs/{id}/cancel"]?.post);
 
   const generationPost = document.paths["/api/generate"].post as Record<string, unknown>;
   const generationResponses = generationPost.responses as Record<string, unknown>;

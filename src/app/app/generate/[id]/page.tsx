@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { AppShell, PageHeader, Panel, StatusBadge } from "@/components/app-shell";
 import { MaterialChecklist } from "@/components/material-checklist";
+import { FilingPanel } from "@/components/filing-panel";
 import { Button } from "@/components/ui/button";
 import { apiEndpoint } from "@/lib/api-base";
 import { authorizedFetch } from "@/lib/auth";
@@ -479,6 +480,16 @@ export default function GenerationDetailPage() {
             applicationId={application.id}
             developmentMethod={application.development_method}
             refreshToken={materialRefresh}
+          />
+        </Panel>
+      )}
+      {application && !loading && (
+        <Panel className="generation-material-panel">
+          <FilingPanel
+            applicationId={application.id}
+            holderCount={application.copyright_holders.length}
+            developmentMethod={application.development_method}
+            softwareName={application.software_full_name}
           />
         </Panel>
       )}
