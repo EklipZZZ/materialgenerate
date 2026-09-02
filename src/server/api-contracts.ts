@@ -154,8 +154,10 @@ export const sourceFeedbackRequestSchema = z.object({
 
 export const sourceArchiveReviewSchema = z.object({
   decision: z.enum(["confirmed", "skipped"]),
-  applicationUpdatedAt: z.string().datetime(),
-  sourceUpdatedAt: z.string().datetime(),
+  // Supabase may serialize timestamptz values with either a trailing `Z` or
+  // an explicit offset such as `+00:00`. Both are valid ISO-8601 instants.
+  applicationUpdatedAt: z.string().datetime({ offset: true }),
+  sourceUpdatedAt: z.string().datetime({ offset: true }),
 }).strict().meta({
   id: "SourceArchiveReviewRequest",
   description: "确认或跳过当前源码核对，并使用申请和源码版本做并发校验。",

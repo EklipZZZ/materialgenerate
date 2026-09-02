@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applicationIdSchema, filingProfileInputSchema, generateRequestSchema, llmConfigIdSchema, sourceFeedbackRequestSchema } from "../src/server/api-contracts.ts";
+import { applicationIdSchema, filingProfileInputSchema, generateRequestSchema, llmConfigIdSchema, sourceArchiveReviewSchema, sourceFeedbackRequestSchema } from "../src/server/api-contracts.ts";
 import { buildOpenApiDocument } from "../src/server/openapi.ts";
 
 function containsWriteOnlyApiKey(value: unknown): boolean {
@@ -65,4 +65,14 @@ test("generation and source feedback use only persisted application inputs", () 
   assert.equal(sourceFeedbackRequestSchema.safeParse({ applicationId, llmConfigId }).success, true);
   assert.equal(sourceFeedbackRequestSchema.safeParse({ applicationId, llmConfigId, sourceObjectKey: "incoming/not-accepted.zip" }).success, false);
   assert.equal(filingProfileInputSchema.safeParse({ contact_name: "暂存联系人" }).success, true);
+});
+
+test("source review accepts Supabase ISO timestamps with explicit offsets", () => {
+  const sourceUpdatedAt = "2026-09-02T12:34:56.789+00:00";
+  const parsed = sourceArchiveReviewSchema.safeParse({
+    decision: "confirmed",
+    applicationUpdatedAt: sourceUpdatedAt,
+    sourceUpdatedAt,
+  });
+  assert.equal(parsed.success, true);
 });
