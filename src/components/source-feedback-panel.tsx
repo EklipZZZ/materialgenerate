@@ -13,6 +13,7 @@ import {
 } from "@/lib/source-upload";
 import type { CopyrightFormData } from "@/lib/copyright-form";
 import type { SourceFeedbackResponse, SourceFeedbackSuggestion } from "@/lib/source-feedback";
+import { sameInstant } from "@/lib/source-review";
 
 interface Props {
   applicationId: string;
@@ -23,7 +24,6 @@ interface Props {
   onSaveReview: (
     patch: Partial<CopyrightFormData>,
     decision: "confirmed" | "skipped",
-    sourceUpdatedAt: string,
   ) => Promise<void>;
 }
 
@@ -42,8 +42,7 @@ function suggestionPatch(suggestion: SourceFeedbackSuggestion): Partial<Copyrigh
 function reviewIsCurrent(archive: SavedSourceArchive | null, applicationUpdatedAt?: string): boolean {
   return Boolean(archive
     && archive.reviewStatus !== "pending"
-    && archive.reviewedApplicationUpdatedAt === applicationUpdatedAt
-    && archive.reviewedSourceUpdatedAt === archive.updatedAt);
+    && sameInstant(archive.reviewedApplicationUpdatedAt, applicationUpdatedAt));
 }
 
 function reviewLabel(archive: SavedSourceArchive | null, applicationUpdatedAt?: string): string {
@@ -164,7 +163,7 @@ export function SourceFeedbackPanel({
     setError(null);
     setMessage(null);
     try {
-      await onSaveReview(patch, decision, archive.updatedAt);
+      await onSaveReview(patch, decision);
       const refreshed = await getSavedSourceArchive(applicationId);
       setArchive(refreshed);
       setMessage(decision === "skipped" ? "已跳过源码核对，材料生成时会使用这份已保存源码。" : "源码核对已确认，申请信息和源码版本已锁定。");

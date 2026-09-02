@@ -126,6 +126,215 @@ function fixture(form: CopyrightFormData, fileCount: number): string {
   </body></html>`;
 }
 
+function multiPageFixture(form: CopyrightFormData, delayFirstApplicationNavigation = false): string {
+  const serializedForm = JSON.stringify(form).replace(/</g, "\\u003c");
+  const serializedDelay = JSON.stringify(delayFirstApplicationNavigation);
+  return `<!doctype html><html><body>
+    <main id="r11-app"></main>
+    <script>
+      const form = ${serializedForm};
+      const delayFirstApplicationNavigation = ${serializedDelay};
+      const app = document.getElementById("r11-app");
+      let applicationNextAttempts = 0;
+      let finalSubmitClicks = 0;
+      window.__finalSubmitClicks = finalSubmitClicks;
+      window.__applicationValues = {};
+      window.__developmentValues = {};
+      window.__featureValues = {};
+
+      function inputField(label, id, tag = "input") {
+        return '<div class="fillin_item">' + label + '<div class="hd-input"><' + tag + ' id="' + id + '"></' + tag + '></div></div>';
+      }
+
+      function selectField(label, id, options) {
+        return '<div class="fillin_item">' + label + '<div class="hd-select" data-name="' + id + '"><div class="box"></div><div class="dropdown" style="display:none">' + options.map((item) => '<div class="hd-option" data-value="' + item + '">' + item + '</div>').join("") + '</div></div></div>';
+      }
+
+      function radioField(label, name, options) {
+        return '<div class="fillin_item">' + label + '<div class="hd-radio-group">' + options.map((item) => '<label class="hd-radio-button"><input type="radio" name="' + name + '" value="' + item + '"><span>' + item + '</span></label>').join("") + '</div></div>';
+      }
+
+      function dateField(label, id) {
+        return '<div class="fillin_item">' + label + '<div class="datePicker"><input class="datepicker-input" id="' + id + '" readonly><div class="datepicker-main" style="display:none"><div class="calendar-title">2026年8月</div><table><tbody><tr><td>1</td><td>2</td><td>3</td></tr></tbody></table></div></div></div>';
+      }
+
+      function holderRow(index) {
+        const holder = form.copyright_holders[index];
+        const options = holder.holder_type === "person" ? ["自然人", "企业法人"] : ["自然人", holder.category || "企业法人"];
+        return '<div class="formGroup-item" data-holder-index="' + index + '">'
+          + selectField("人员类型", "holder-type-" + index, options)
+          + inputField("姓名/名称", "holder-name-" + index)
+          + selectField("证件类型", "holder-document-type-" + index, [holder.document_type, "统一社会信用代码"])
+          + inputField("证件号码", "holder-document-number-" + index)
+          + selectField("国籍", "holder-nationality-" + index, ["中国", "其他"])
+          + '<div class="fillin_item">省市<div class="hd-cascader" data-province="' + holder.province + '" data-city="' + holder.city + '"><div class="label"></div><div class="dropdown" style="display:none"><ul class="options"><li class="option" data-level="province">' + holder.province + '</li></ul></div></div></div>'
+          + '</div>';
+      }
+
+      function wireControls() {
+        document.querySelectorAll(".hd-select").forEach((control) => {
+          const box = control.querySelector(".box");
+          const dropdown = control.querySelector(".dropdown");
+          box.onclick = () => { dropdown.style.display = dropdown.style.display === "none" ? "block" : "none"; };
+          control.querySelectorAll(".hd-option").forEach((option) => {
+            option.onclick = () => {
+              control.querySelectorAll(".hd-option").forEach((item) => item.classList.remove("selected"));
+              option.classList.add("selected");
+              box.textContent = option.textContent;
+              dropdown.style.display = "none";
+            };
+          });
+        });
+        document.querySelectorAll(".datePicker").forEach((picker) => {
+          const input = picker.querySelector("input");
+          const calendar = picker.querySelector(".datepicker-main");
+          picker.onclick = (event) => {
+            if (event.target === input || event.target === picker) calendar.style.display = "block";
+          };
+          picker.querySelector("td").onclick = () => {
+            input.value = form.development_date;
+            input.dispatchEvent(new Event("input", { bubbles: true }));
+            input.dispatchEvent(new Event("change", { bubbles: true }));
+            calendar.style.display = "none";
+          };
+        });
+        document.querySelectorAll(".hd-cascader").forEach((control) => {
+          const label = control.querySelector(".label");
+          const dropdown = control.querySelector(".dropdown");
+          const options = control.querySelector(".options");
+          label.onclick = () => { dropdown.style.display = "block"; };
+          control.querySelectorAll(".option").forEach((option) => {
+            option.onclick = () => {
+              if (option.dataset.level === "province") {
+                label.textContent = option.textContent;
+                options.innerHTML = '<li class="option" data-level="city">' + control.dataset.city + '</li>';
+                options.querySelector(".option").onclick = () => {
+                  label.textContent = control.dataset.province + " / " + control.dataset.city;
+                  dropdown.style.display = "none";
+                };
+              }
+            };
+          });
+        });
+      }
+
+      function renderIdentity() {
+        location.hash = "#/identity";
+        app.innerHTML = '<h1>选择办理身份</h1><button id="applicant">我是申请人</button><button>我是代理人</button>';
+        document.getElementById("applicant").onclick = renderApplication;
+      }
+
+      function renderApplication() {
+        location.hash = "#/application";
+        app.innerHTML = "<h1>软件申请信息</h1>"
+          + inputField("软件全称", "software-full-name")
+          + inputField("软件简称", "software-short-name")
+          + inputField("版本号", "version")
+          + selectField("权利取得方式", "rights-acquisition-method", ["原始取得", "继受取得"])
+          + radioField("权利范围", "rights-scope", ["全部权利", "部分权利"])
+          + '<button id="next-application">下一步</button>';
+        wireControls();
+        document.getElementById("next-application").onclick = () => {
+          applicationNextAttempts += 1;
+          if (delayFirstApplicationNavigation && applicationNextAttempts === 1) {
+            const error = document.createElement("div");
+            error.className = "error";
+            error.textContent = "不能为空";
+            app.appendChild(error);
+            window.setTimeout(() => error.remove(), 900);
+            return;
+          }
+          window.__applicationValues = {
+            fullName: document.getElementById("software-full-name").value,
+            shortName: document.getElementById("software-short-name").value,
+            version: document.getElementById("version").value,
+            rights: document.querySelector("[data-name='rights-acquisition-method'] .box").textContent,
+            scope: document.querySelector("input[name='rights-scope']:checked").value,
+          };
+          window.setTimeout(renderDevelopment, 160);
+        };
+      }
+
+      function renderDevelopment() {
+        location.hash = "#/development";
+        app.innerHTML = "<h1>软件开发信息</h1>"
+          + selectField("软件分类", "software-category", [form.software_category, "其他"])
+          + radioField("软件作品说明", "work-type", ["原创", "修改"])
+          + selectField("开发方式", "development-method", ["单独开发", "合作开发"])
+          + (form.development_method === "independent" ? "" : radioField("是否多个著作权人共同享有软件著作权", "shared-holder", ["是", "否"]))
+          + dateField("开发完成日期", "development-date")
+          + radioField("是否发表", "published", ["未发表", "已发表"])
+          + '<section class="formGroup" id="holder-list">' + holderRow(0) + '</section>'
+          + '<div class="fillin_item">合作开发合同或协议<div class="upLoadBox"><input id="cooperation-proof" class="hdUpload-inputFile" type="file"><span class="proof-status"></span></div></div>'
+          + '<button id="add-holder">+添加著作权人</button><button id="next-development">下一步</button>';
+        wireControls();
+        document.getElementById("cooperation-proof").onchange = () => {
+          window.setTimeout(() => { document.querySelector(".proof-status").textContent = "上传成功"; }, 120);
+        };
+        document.getElementById("add-holder").onclick = () => {
+          document.getElementById("holder-list").insertAdjacentHTML("beforeend", holderRow(1));
+          wireControls();
+        };
+        document.getElementById("next-development").onclick = () => {
+          window.__developmentValues = {
+            category: document.querySelector("[data-name='software-category'] .box").textContent,
+            workType: document.querySelector("input[name='work-type']:checked").value,
+            method: document.querySelector("[data-name='development-method'] .box").textContent,
+            date: document.getElementById("development-date").value,
+            published: document.querySelector("input[name='published']:checked").value,
+            sharedHolder: document.querySelector("input[name='shared-holder']:checked")?.value || "",
+            holder0: document.getElementById("holder-name-0").value,
+            holder1: document.getElementById("holder-name-1")?.value || "",
+            document0: document.getElementById("holder-document-number-0").value,
+            document1: document.getElementById("holder-document-number-1")?.value || "",
+            area0: document.querySelector("[data-holder-index='0'] .hd-cascader .label").textContent,
+            area1: document.querySelector("[data-holder-index='1'] .hd-cascader .label")?.textContent || "",
+          };
+          window.setTimeout(renderFeatures, 160);
+        };
+      }
+
+      function renderFeatures() {
+        location.hash = "#/features";
+        app.innerHTML = "<h1>软件功能与特点</h1>"
+          + inputField("开发的硬件环境", "development-hardware")
+          + inputField("运行的硬件环境", "runtime-hardware")
+          + inputField("开发该软件的操作系统", "development-os")
+          + inputField("软件开发环境工具", "development-tools")
+          + inputField("软件运行平台", "runtime-platform")
+          + inputField("软件运行支撑环境", "runtime-environment")
+          + '<div class="fillin_item">编程语言<div class="hd-checkbox-group"><label><input type="checkbox" value="TypeScript"><span>TypeScript</span></label></div><textarea placeholder="若有需要，请输入其他编程语言..."></textarea></div>'
+          + inputField("源程序量", "source-code-lines")
+          + inputField("开发目的", "development-purpose")
+          + inputField("面向领域/行业", "target-industry")
+          + inputField("软件的主要功能", "main-functions", "textarea")
+          + inputField("软件的技术特点", "technical-features", "textarea")
+          + '<button id="next-features">下一步</button>';
+        wireControls();
+        document.getElementById("next-features").onclick = () => {
+          window.__featureValues = {
+            developmentHardware: document.getElementById("development-hardware").value,
+            developmentOs: document.getElementById("development-os").value,
+            sourceLines: document.getElementById("source-code-lines").value,
+            mainFunctions: document.getElementById("main-functions").value,
+            technicalFeatures: document.getElementById("technical-features").value,
+            language: document.querySelector("input[type='checkbox']:checked").value,
+            otherLanguage: document.querySelector("textarea[placeholder*='其他编程语言']").value,
+          };
+          window.setTimeout(renderConfirm, 160);
+        };
+      }
+
+      function renderConfirm() {
+        location.hash = "#/confirm";
+        app.innerHTML = '<h1>确认信息</h1><button id="final-submit" onclick="window.__finalSubmitClicks++">确认填报</button>';
+      }
+
+      renderIdentity();
+    </script>
+  </body></html>`;
+}
+
 type TestMaterialKind = "source_code_pdf" | "user_manual_pdf" | "cooperation_agreement" | "signature_page";
 
 function manifestForKinds(form: CopyrightFormData, kinds: TestMaterialKind[]): FilingManifest {
@@ -184,11 +393,11 @@ async function deliver(page: Page, message: FileTransferMessage | PortalMessage)
   }, message);
 }
 
-async function waitForCode(page: Page, code: string): Promise<void> {
+async function waitForCode(page: Page, code: string, timeout = 10_000): Promise<void> {
   await page.waitForFunction((expected) => {
     const items = (window as unknown as { __messages: PortalMessage[] }).__messages || [];
     return items.some((item) => (item.event as PortalMessage | undefined)?.code === expected);
-  }, code, { timeout: 10_000 });
+  }, code, { timeout });
 }
 
 async function waitForEventType(page: Page, type: string): Promise<void> {
@@ -279,6 +488,82 @@ test("R11 simulated portal maps person, organization, cooperative and mixed hold
       await runFormScenario(page, formFor(scenario.holders, scenario.method), scenario.files);
       await page.close();
     }
+  } finally {
+    await browser.close();
+  }
+});
+
+test("R11 multi-page SPA fills each page after the user chooses applicant identity", async () => {
+  await ensureOfficialBundle();
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    const form = formFor([holder("person", 0), holder("organization", 1)], "cooperative");
+    await page.setContent(multiPageFixture(form));
+    await installMockRuntime(page);
+    await page.addScriptTag({ path: officialBundle });
+    await page.waitForFunction(() => (window as unknown as { __messages: PortalMessage[] }).__messages?.some((item) => item.type === "OFFICIAL_READY"));
+    const manifest = manifestFor(form, 3);
+    await deliver(page, { protocol: "softreg-filing/v1", source: "softreg-extension", type: "BEGIN_FILING", jobId: manifest.jobId, manifest });
+    await waitForCode(page, "login_required");
+    await page.locator("#applicant").click();
+    const proof = manifest.materials.find((material) => material.kind === "cooperation_agreement");
+    assert.ok(proof);
+    await page.waitForFunction((id) => {
+      const items = (window as unknown as { __messages: PortalMessage[] }).__messages || [];
+      return items.some((item) => item.type === "FILE_REQUEST" && item.materialId === id);
+    }, proof.id);
+    await respondToMaterial(page, manifest, proof.id);
+    await waitForCode(page, "review_required");
+
+    assert.equal(await page.evaluate(() => location.hash), "#/confirm");
+    assert.equal(await page.locator("#final-submit").count(), 1);
+    assert.equal(await page.locator("#final-submit").evaluate((element) => (element.ownerDocument.defaultView as unknown as { __finalSubmitClicks: number }).__finalSubmitClicks), 0);
+    const values = await page.evaluate(() => ({
+      application: (window as unknown as { __applicationValues?: Record<string, string> }).__applicationValues,
+      development: (window as unknown as { __developmentValues?: Record<string, string> }).__developmentValues,
+      features: (window as unknown as { __featureValues?: Record<string, string> }).__featureValues,
+    }));
+    assert.equal(values.application?.fullName, form.software_full_name);
+    assert.equal(values.application?.rights, "原始取得");
+    assert.equal(values.development?.method, "合作开发");
+    assert.equal(values.development?.date, form.development_date);
+    assert.equal(values.development?.sharedHolder, "是");
+    assert.equal(values.development?.holder0, form.copyright_holders[0].name);
+    assert.equal(values.development?.holder1, form.copyright_holders[1].name);
+    assert.match(values.development?.area0 || "", /北京市/);
+    assert.match(values.features?.developmentHardware || "", /PC/);
+    assert.equal(values.features?.sourceLines, String(form.source_code_lines));
+    assert.equal(values.features?.language, "TypeScript");
+    assert.equal(values.features?.otherLanguage, "");
+    const allMessages = await messages(page);
+    assert.equal(allMessages.some((item) => (item.event as PortalMessage | undefined)?.code === "portal_structure_changed"), false);
+    assert.equal(allMessages.some((item) => item.type === "FILE_REQUEST" && item.materialId === proof.id), true);
+    await page.close();
+  } finally {
+    await browser.close();
+  }
+});
+
+test("R11 retries a navigation after the portal validates before Vue state settles", async () => {
+  await ensureOfficialBundle();
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    const form = formFor([holder("person", 0)], "independent");
+    await page.setContent(multiPageFixture(form, true));
+    await installMockRuntime(page);
+    await page.addScriptTag({ path: officialBundle });
+    await page.waitForFunction(() => (window as unknown as { __messages: PortalMessage[] }).__messages?.some((item) => item.type === "OFFICIAL_READY"));
+    const manifest = manifestFor(form, 2);
+    await deliver(page, { protocol: "softreg-filing/v1", source: "softreg-extension", type: "BEGIN_FILING", jobId: manifest.jobId, manifest });
+    await waitForCode(page, "login_required");
+    await page.locator("#applicant").click();
+    await waitForCode(page, "review_required", 20_000);
+    assert.equal(await page.evaluate(() => location.hash), "#/confirm");
+    const allMessages = await messages(page);
+    assert.equal(allMessages.some((item) => (item.event as PortalMessage | undefined)?.code === "field_verification_failed"), false);
+    await page.close();
   } finally {
     await browser.close();
   }

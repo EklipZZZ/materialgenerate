@@ -283,7 +283,11 @@ async function handleMessage(message: unknown, sender: chrome.runtime.MessageSen
     if (!state || !isExtensionToAppMessage(event)) return;
     if (event.type === "EXTENSION_READY" || event.jobId !== state.jobId) return;
     const delivered = await sendToApp(state, event);
-    if (delivered && (event.type === "FILING_COMPLETED" || event.type === "FILING_FAILED")) states.delete(state.jobId);
+    // Keep a failed job paired with its official tab. The web app's
+    // “继续填报” action is specifically meant to retry in the same tab so
+    // the user's login and current R11 route are preserved. A completed job
+    // has no further extension work and can release the state.
+    if (delivered && event.type === "FILING_COMPLETED") states.delete(state.jobId);
     return;
   }
   if (candidate.type === "FILE_REQUEST" && typeof candidate.jobId === "string" && typeof candidate.materialId === "string") {

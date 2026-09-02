@@ -11,7 +11,15 @@ import {
   type OfficialCommand,
 } from "../../src/lib/filing-protocol.ts";
 import type { MaterialKind } from "../../src/lib/materials.ts";
-import { AdapterError, hasApplicationForm, hasVisibleLoginPrompt, hasUploadControls, R11Adapter } from "./r11-adapter";
+import {
+  AdapterError,
+  detectR11Page,
+  hasVisibleLoginPrompt,
+  hasVisibleValidationErrors,
+  hasUploadControls,
+  type R11Page,
+  R11Adapter,
+} from "./r11-adapter";
 
 type SessionStage = "idle" | "review" | "upload" | "signature" | "done";
 
@@ -33,9 +41,14 @@ interface Session {
   jobId: string;
   manifest: FilingManifest;
   stage: SessionStage;
-  navigationClicked: boolean;
+  lastPage: R11Page;
+  navigationPage: R11Page | null;
+  navigationStartedAt: number;
+  navigationAttempts: number;
+  formStarted: boolean;
   loginPromptSeen: boolean;
   profileFilled: boolean;
+  resumeRequested: boolean;
   uploaded: Set<string>;
   lastNeedCode: FilingEventCode | null;
 }
@@ -45,6 +58,11 @@ let observer: MutationObserver | null = null;
 let scheduledTimer: number | null = null;
 let advancing = false;
 const transfers = new Map<string, TransferState>();
+
+const NAVIGATION_WAIT_MS = 8_000;
+const NAVIGATION_RETRY_LIMIT = 2;
+const PAGE_RETRY_LIMIT = 12;
+const PAGE_RETRY_DELAY_MS = 260;
 
 function sendMessage(message: Record<string, unknown>): void {
   void chrome.runtime.sendMessage({ protocol: FILING_PROTOCOL, source: FILING_EXTENSION_SOURCE, ...message }).catch(() => undefined);
@@ -101,35 +119,43 @@ function isOfficialCommand(value: unknown): value is OfficialCommand {
 
 function resetSession(command: Extract<OfficialCommand, { type: "BEGIN_FILING" | "RESUME_FILING" }>): void {
   if (!isFilingManifest(command.manifest)) return;
+  const currentPage = detectR11Page(document);
   if (!session || session.jobId !== command.jobId || command.type === "BEGIN_FILING") {
     session = {
       jobId: command.jobId,
       manifest: command.manifest,
-      // A resume may arrive after the official SPA navigated to the upload
-      // or signature page and recreated this content script. The presence of
-      // an upload area is the only safe signal needed to continue.
       stage: command.type === "RESUME_FILING" && hasUploadControls(document) ? "upload" : "idle",
-      navigationClicked: false,
+      lastPage: currentPage,
+      navigationPage: null,
+      navigationStartedAt: 0,
+      navigationAttempts: 0,
+      formStarted: false,
       loginPromptSeen: false,
       profileFilled: false,
+      resumeRequested: command.type === "RESUME_FILING",
       uploaded: new Set<string>(),
       lastNeedCode: null,
     };
   } else {
     session.manifest = command.manifest;
     session.lastNeedCode = null;
+    session.resumeRequested = command.type === "RESUME_FILING";
+    session.lastPage = currentPage;
+    session.navigationPage = null;
+    session.navigationStartedAt = 0;
+    session.navigationAttempts = 0;
     session.loginPromptSeen = false;
-    if (session.stage === "review" || session.stage === "signature") {
-      session.stage = "upload";
-      // The official portal may reveal the reusable applicant profile only
-      // after the application form is reviewed. Re-check it on every resume.
-      session.profileFilled = false;
-    } else if (session.stage === "done") {
-      session.stage = hasUploadControls(document) ? "upload" : "idle";
-      session.profileFilled = false;
+    if (command.type === "RESUME_FILING") {
+      // A resume from the web app means that the user has completed the
+      // manual review step. Keep the confirm page untouched; only a genuine
+      // materials page or the legacy fixture may enter upload mode here.
+      if (currentPage === "materials" || hasUploadControls(document) && currentPage !== "confirm") session.stage = "upload";
+      else if (session.stage === "signature") session.stage = "upload";
+      else if (currentPage !== "confirm" && currentPage !== "identity") session.stage = "idle";
+      else session.stage = "review";
     }
   }
-  scheduleAdvance(50);
+  scheduleAdvance(80);
 }
 
 function cancelSession(jobId: string): void {
@@ -171,7 +197,7 @@ function attachFile(input: HTMLInputElement, state: TransferState): void {
   if (!input.files || input.files.length !== 1 || input.files[0].size !== state.sizeBytes) throw new Error("file input rejected");
 }
 
-function receiveFileTransfer(message: FileTransferMessage): void {
+async function receiveFileTransfer(message: FileTransferMessage): Promise<void> {
   if (!session || message.jobId !== session.jobId) return;
   const state = transfers.get(message.materialId);
   if (message.type === "FILE_TRANSFER_START") {
@@ -214,13 +240,14 @@ function receiveFileTransfer(message: FileTransferMessage): void {
     state.chunks[message.index] = message.base64;
     return;
   }
-  transfers.delete(message.materialId);
   window.clearTimeout(state.timer);
   try {
     attachFile(state.input, state);
-    if (!new R11Adapter(document).uploadAcknowledged(state.input)) throw new Error("official page did not acknowledge file");
+    await new R11Adapter(document).waitForUploadAcknowledgement(state.input);
+    transfers.delete(message.materialId);
     state.resolve();
   } catch (error) {
+    transfers.delete(message.materialId);
     state.reject(error instanceof Error ? error : new Error("file upload failed"));
   }
 }
@@ -291,6 +318,129 @@ async function uploadMaterials(adapter: R11Adapter): Promise<void> {
   finish();
 }
 
+function developmentProofKind(method: FilingManifest["application"]["development_method"]): MaterialKind | null {
+  if (method === "cooperative") return "cooperation_agreement";
+  if (method === "commissioned") return "commission_agreement";
+  if (method === "assigned_task") return "task_order";
+  return null;
+}
+
+async function uploadDevelopmentProof(adapter: R11Adapter): Promise<boolean> {
+  if (!session) return false;
+  const kind = developmentProofKind(session.manifest.application.development_method);
+  if (!kind) return true;
+  const material = session.manifest.materials.find((item) => item.kind === kind);
+  if (!material) {
+    fail("manual_upload_required", "application_form");
+    return false;
+  }
+  if (session.uploaded.has(material.id)) return true;
+  let input: HTMLInputElement;
+  try {
+    input = adapter.findUploadInput(kind);
+  } catch (error) {
+    fail(adapterErrorCode(error) === "field_not_found" ? "manual_upload_required" : adapterErrorCode(error), "application_form");
+    return false;
+  }
+  if (adapter.uploadAcknowledged(input)) {
+    session.uploaded.add(material.id);
+    return true;
+  }
+  progress("application_form", "upload_started", 44);
+  try {
+    await requestFile(material.id, input);
+    if (!session) return false;
+    session.uploaded.add(material.id);
+    progress("application_form", "upload_completed", 48);
+    return true;
+  } catch {
+    fail("manual_upload_required", "application_form");
+    return false;
+  }
+}
+
+function pageProgress(page: R11Page): number {
+  if (page === "application") return 30;
+  if (page === "development") return 50;
+  if (page === "features") return 72;
+  return 25;
+}
+
+async function fillPageWithRetry(adapter: R11Adapter, page: R11Page): Promise<boolean> {
+  for (let attempt = 0; attempt <= PAGE_RETRY_LIMIT; attempt += 1) {
+    if (!session || detectR11Page(document) !== page) return false;
+    try {
+      await adapter.fillCurrentPage(session?.manifest.application as FilingManifest["application"]);
+      return Boolean(session && detectR11Page(document) === page);
+    } catch (error) {
+      if (detectR11Page(document) !== page) return false;
+      if (!(error instanceof AdapterError) || error.code !== "field_not_found" || attempt === PAGE_RETRY_LIMIT) throw error;
+      await new Promise<void>((resolve) => window.setTimeout(resolve, PAGE_RETRY_DELAY_MS));
+    }
+  }
+  return false;
+}
+
+async function handleFormPage(adapter: R11Adapter, page: R11Page): Promise<void> {
+  if (!session) return;
+  if (session.navigationPage === page) {
+    const elapsed = Date.now() - session.navigationStartedAt;
+    if (elapsed < NAVIGATION_WAIT_MS) {
+      scheduleAdvance(Math.min(900, NAVIGATION_WAIT_MS - elapsed + 50));
+      return;
+    }
+    // R11 is a Vue SPA. The native controls may show the value before the
+    // component model has consumed the input event, so the first click can
+    // leave the route unchanged and render red "不能为空" messages. A
+    // bounded re-fill/retry is safe; an unbounded click loop is not.
+    if (session.navigationAttempts <= NAVIGATION_RETRY_LIMIT) {
+      session.navigationPage = null;
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 320));
+    } else {
+      fail(hasVisibleValidationErrors(document) ? "field_verification_failed" : "portal_structure_changed", "application_form");
+      return;
+    }
+  }
+
+  if (!session.formStarted) {
+    session.formStarted = true;
+    progress("application_form", "form_started", 20);
+  }
+  try {
+    const filled = await fillPageWithRetry(adapter, page);
+    if (!filled || !session || detectR11Page(document) !== page) return;
+  } catch (error) {
+    fail(adapterErrorCode(error), "application_form");
+    return;
+  }
+  if (!session) return;
+  if (page === "legacy") {
+    session.stage = "review";
+    session.resumeRequested = false;
+    progress("application_form", "form_filled", 60);
+    needUser("review", "review_required");
+    return;
+  }
+  if (page === "development" && !await uploadDevelopmentProof(adapter)) return;
+  if (!session || detectR11Page(document) !== page) return;
+  // Give Vue's input/change handlers and any dependent controls one more
+  // render turn before invoking the portal's own validation.
+  await new Promise<void>((resolve) => window.setTimeout(resolve, 360));
+  if (!session || detectR11Page(document) !== page) return;
+  try {
+    adapter.clickNext();
+  } catch (error) {
+    fail(adapterErrorCode(error), "application_form");
+    return;
+  }
+  session.lastPage = page;
+  session.navigationPage = page;
+  session.navigationStartedAt = Date.now();
+  session.navigationAttempts += 1;
+  progress("application_form", "form_filled", pageProgress(page));
+  scheduleAdvance(900);
+}
+
 async function advance(): Promise<void> {
   if (!session || advancing || session.stage === "done") return;
   advancing = true;
@@ -304,52 +454,72 @@ async function advance(): Promise<void> {
     }
     if (session.loginPromptSeen) {
       session.loginPromptSeen = false;
+      session.lastNeedCode = null;
       progress("login", "login_detected", 10);
     }
+
     if (!session.profileFilled) {
       try {
-        session.profileFilled = adapter.fillFilingProfile(session.manifest.filingProfile);
+        session.profileFilled = await adapter.fillFilingProfile(session.manifest.filingProfile);
       } catch (error) {
         fail(adapterErrorCode(error), "application_form");
         return;
       }
     }
+
     if (adapter.isLandingPage() && session.stage === "idle") {
       adapter.openR11Entry();
       progress("opening_portal", "portal_opened", 5);
-      scheduleAdvance(500);
+      scheduleAdvance(800);
       return;
     }
-    if (session.stage === "idle" && hasApplicationForm(document)) {
-      progress("application_form", "form_started", 20);
-      try {
-        await adapter.fillApplication(session.manifest.application);
-      } catch (error) {
-        fail(adapterErrorCode(error), "application_form");
+
+    const page = detectR11Page(document);
+    if (session.navigationPage && page !== session.navigationPage) {
+      session.navigationPage = null;
+      session.navigationAttempts = 0;
+      session.lastNeedCode = null;
+    }
+    session.lastPage = page;
+
+    if (page === "identity") {
+      session.stage = "idle";
+      needUser("login", "login_required");
+      return;
+    }
+    if (page === "confirm") {
+      session.stage = "review";
+      session.resumeRequested = false;
+      progress("review", "form_filled", 75);
+      needUser("review", "review_required");
+      return;
+    }
+    if (page === "materials") {
+      if (!session.resumeRequested && session.stage !== "upload") {
+        // Reaching the material page from the official confirmation action is
+        // still a manual checkpoint. Wait for the web app's RESUME_FILING so
+        // the user can finish the official review before files are uploaded.
+        session.stage = "review";
+        needUser("review", "review_required");
         return;
       }
-      session.stage = "review";
-      progress("application_form", "form_filled", 60);
-      needUser("review", "review_required");
+      session.stage = "upload";
+      await uploadMaterials(adapter);
+      return;
+    }
+    if ((page === "application" || page === "development" || page === "features" || page === "legacy") && session.stage !== "review" && session.stage !== "upload") {
+      await handleFormPage(adapter, page);
       return;
     }
     if (session.stage === "review") return;
     if (session.stage === "upload") {
       if (!hasUploadControls(document)) {
-        if (session.navigationClicked) {
-          fail("portal_structure_changed", "materials");
-          return;
-        }
-        session.navigationClicked = true;
-        try { adapter.clickNextToMaterials(); }
-        catch (error) {
-          fail(adapterErrorCode(error), "r11_entry");
-          return;
-        }
-        scheduleAdvance(1_200);
+        // At the real /confirm route the “提交材料清单” action may be the
+        // gateway to the file page. It is intentionally left to the user so
+        // that the extension cannot mistake it for final submission.
+        needUser("review", "review_required");
         return;
       }
-      session.navigationClicked = false;
       await uploadMaterials(adapter);
     }
   } finally {
@@ -359,7 +529,7 @@ async function advance(): Promise<void> {
 
 chrome.runtime.onMessage.addListener((message: unknown) => {
   if (isFileTransferMessage(message)) {
-    receiveFileTransfer(message);
+    void receiveFileTransfer(message);
     return;
   }
   if (!isOfficialCommand(message)) return;

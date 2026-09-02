@@ -4,6 +4,7 @@ import { sourceArchiveCompleteSchema, sourceArchiveReviewSchema, sourceArchiveUp
 import { getSupabaseAdmin } from "./config";
 import { ApiError } from "./http";
 import { assertObjectSize, createSignedUpload, deleteObjects } from "./storage";
+import { sameInstant } from "../lib/source-review";
 
 const MAX_SOURCE_ARCHIVE_BYTES = 100 * 1024 * 1024;
 
@@ -110,8 +111,14 @@ export async function completeSourceArchiveUpload(
 export function isSourceArchiveReviewCurrent(archive: SourceArchive, applicationUpdatedAt: string | undefined): boolean {
   return Boolean(applicationUpdatedAt
     && archive.reviewStatus !== "pending"
-    && archive.reviewedApplicationUpdatedAt === applicationUpdatedAt
-    && archive.reviewedSourceUpdatedAt === archive.updatedAt);
+    // A source replacement always resets review_status to pending. The
+    // archive row's updated_at is therefore not a reliable second version
+    // check here: the review update itself may advance that column depending
+    // on the database trigger installed on an existing project. The reviewed
+    // source timestamp is retained for audit/concurrency checks when the
+    // review is saved, while the status is the source-version invalidation
+    // signal used by generation.
+    && sameInstant(archive.reviewedApplicationUpdatedAt, applicationUpdatedAt));
 }
 
 export async function invalidateOwnedSourceArchiveReview(applicationId: string, userId: string): Promise<void> {
@@ -142,7 +149,7 @@ export async function reviewOwnedSourceArchive(
     .maybeSingle();
   if (application.error) throw new Error("申请版本查询失败");
   if (!application.data) throw new ApiError(404, "申请不存在");
-  if (String(application.data.updated_at) !== input.applicationUpdatedAt || current.archive.updatedAt !== input.sourceUpdatedAt) {
+  if (!sameInstant(String(application.data.updated_at), input.applicationUpdatedAt) || !sameInstant(current.archive.updatedAt, input.sourceUpdatedAt)) {
     throw new ApiError(409, "申请或源码已变化，请重新核对");
   }
 

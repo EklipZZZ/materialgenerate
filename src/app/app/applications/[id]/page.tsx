@@ -36,7 +36,7 @@ import {
   updateApplication,
   type ApplicationRecord,
 } from "@/lib/softreg-api";
-import { reviewSavedSourceArchive } from "@/lib/source-upload";
+import { getSavedSourceArchive, reviewSavedSourceArchive } from "@/lib/source-upload";
 
 export default function ApplicationEditPage() {
   const { user } = useAuth();
@@ -138,7 +138,6 @@ export default function ApplicationEditPage() {
   async function saveSourceReview(
     patch: Partial<CopyrightFormData>,
     decision: "confirmed" | "skipped",
-    sourceUpdatedAt: string,
   ) {
     if (!id || !form) return;
     const nextForm = { ...form, ...patch };
@@ -152,10 +151,16 @@ export default function ApplicationEditPage() {
     setMessage(null);
     try {
       const updated = await updateApplication(id, nextForm);
+      // Saving the application invalidates the review in the database. Read
+      // the archive again before confirming it so a database trigger or a
+      // concurrent refresh cannot make us submit the timestamp held by the
+      // pre-save UI state.
+      const currentArchive = await getSavedSourceArchive(id);
+      if (!currentArchive) throw new Error("源码压缩包已不存在，请重新上传后再核对");
       await reviewSavedSourceArchive(id, {
         decision,
         applicationUpdatedAt: updated.updated_at,
-        sourceUpdatedAt,
+        sourceUpdatedAt: currentArchive.updatedAt,
       });
       setApplication(updated);
       setForm(updated);

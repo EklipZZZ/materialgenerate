@@ -74,7 +74,7 @@ function statusInstruction(job: FilingJob | null): string {
   if (!job) return "先生成源代码和用户手册 PDF，再从这里开始。";
   if (job.status === "waiting_extension" || job.status === "created") return "请保持本申请页面打开，并确认 Chrome 扩展已连接。";
   if (job.status === "waiting_login") return "请在新打开的版权中心页面手动选择个人用户/机构并完成登录、验证码、短信或实名验证。";
-  if (job.status === "waiting_review") return "请在官方页面核对申请信息。确认无误后，在这里点击“继续填报”，扩展才会进入材料上传。";
+  if (job.status === "waiting_review") return "请在官方确认页核对申请信息；确认无误后，先在官方页面点击“提交材料清单”进入材料页（这不是最终提交），再回本系统点击“继续填报”。";
   if (job.status === "waiting_user") {
     if (job.error_code === "signature_page_required") return "请在官方页面生成申请确认签章页，下载、打印、签字/盖章后，将 PDF 上传回本申请，再点击“继续填报”。";
     if (job.error_code === "manual_upload_required") return "官方文件控件无法被安全确认。请按官方页面提示人工上传，完成后可以点击“继续填报”重新配对。";

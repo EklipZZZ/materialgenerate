@@ -31,6 +31,7 @@ import {
   getSavedSourceArchive,
   type SavedSourceArchive,
 } from "@/lib/source-upload";
+import { sameInstant } from "@/lib/source-review";
 
 interface GenerationResult {
   jobId?: string;
@@ -85,8 +86,11 @@ function stepIndex(step: string): number {
 function sourceReviewIsCurrent(archive: SavedSourceArchive | null, applicationUpdatedAt?: string): boolean {
   return Boolean(archive
     && archive.reviewStatus !== "pending"
-    && archive.reviewedApplicationUpdatedAt === applicationUpdatedAt
-    && archive.reviewedSourceUpdatedAt === archive.updatedAt);
+    // Replacing the source archive resets reviewStatus to pending. The
+    // source row's updated_at can also be advanced by the review update
+    // trigger itself, so the status is the authoritative source-version
+    // check and only the application version is compared here.
+    && sameInstant(archive.reviewedApplicationUpdatedAt, applicationUpdatedAt));
 }
 
 function sourceReviewLabel(archive: SavedSourceArchive | null, applicationUpdatedAt?: string): string {
