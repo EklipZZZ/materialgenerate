@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["DOM", "ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "types": ["chrome"],
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true
+  },
+  "include": [
+    "src/**/*.ts",
+    "../src/lib/filing-protocol.ts",
+    "../src/lib/copyright-form.ts",
+    "../src/lib/materials.ts",
+    "../src/lib/copyright-constraints.ts"
+  ]
+}
