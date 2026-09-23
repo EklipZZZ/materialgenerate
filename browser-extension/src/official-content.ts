@@ -296,17 +296,33 @@ function requestFile(materialId: string, input: HTMLInputElement): Promise<void>
   });
 }
 
-async function uploadMaterials(adapter: R11Adapter): Promise<void> {
-  if (!session) return;
-  const order: MaterialKind[] = ["source_code_pdf", "user_manual_pdf", "cooperation_agreement", "commission_agreement", "task_order", "signature_page"];
-  const available = order.map((kind) => session?.manifest.materials.find((material) => material.kind === kind)).filter((item): item is NonNullable<typeof item> => Boolean(item));
+const materialUploadOrder: MaterialKind[] = [
+  "source_code_pdf",
+  "user_manual_pdf",
+  "cooperation_agreement",
+  "commission_agreement",
+  "task_order",
+  "signature_page",
+];
+
+async function uploadMaterials(
+  adapter: R11Adapter,
+  kinds: readonly MaterialKind[] = materialUploadOrder,
+  pauseForSignature = true,
+): Promise<boolean> {
+  if (!session) return false;
+  const available = materialUploadOrder
+    .filter((kind) => kinds.includes(kind))
+    .map((kind) => session?.manifest.materials.find((material) => material.kind === kind))
+    .filter((item): item is NonNullable<typeof item> => Boolean(item));
   for (const [index, material] of available.entries()) {
-    if (!session || session.uploaded.has(material.id)) continue;
+    if (!session) return false;
+    if (session.uploaded.has(material.id)) continue;
     let input: HTMLInputElement;
     try { input = adapter.findUploadInput(material.kind); }
     catch (error) {
       fail(adapterErrorCode(error) === "field_not_found" ? "manual_upload_required" : adapterErrorCode(error), "materials", "materials.find_upload");
-      return;
+      return false;
     }
     const progressValue = 65 + Math.floor((index / Math.max(1, available.length)) * 30);
     const completedValue = 65 + Math.floor(((index + 1) / Math.max(1, available.length)) * 30);
@@ -318,22 +334,24 @@ async function uploadMaterials(adapter: R11Adapter): Promise<void> {
     progress("materials", "upload_started", progressValue);
     try {
       await requestFile(material.id, input);
-      if (!session) return;
+      if (!session) return false;
       session.uploaded.add(material.id);
       progress("materials", "upload_completed", completedValue);
     } catch {
       fail("manual_upload_required", "materials", "materials.file_transfer");
-      return;
+      return false;
     }
   }
-  if (!session) return;
+  if (!session) return false;
+  if (!pauseForSignature) return true;
   const hasSignature = session.manifest.materials.some((material) => material.kind === "signature_page");
   if (!hasSignature) {
     session.stage = "signature";
     needUser("signature_page", "signature_page_required", "signature.manual");
-    return;
+    return true;
   }
   finish();
+  return true;
 }
 
 function developmentProofKind(method: FilingManifest["application"]["development_method"]): MaterialKind | null {
@@ -522,6 +540,18 @@ async function handleFormPage(adapter: R11Adapter, page: R11Page): Promise<void>
     return;
   }
   if (page === "development" && !await uploadDevelopmentProof(adapter)) return;
+  if (page === "features") {
+    // R11 places the required program/document identification-material
+    // uploaders on the features page itself. They must receive files before
+    // the page's 下一步 validation runs; waiting for a later materials route
+    // leaves the page apparently filled but invalid.
+    const requiredKinds: MaterialKind[] = ["source_code_pdf", "user_manual_pdf"];
+    if (!requiredKinds.every((kind) => session?.manifest.materials.some((material) => material.kind === kind))) {
+      fail("manual_upload_required", "materials", "features.required_materials");
+      return;
+    }
+    if (!await uploadMaterials(adapter, requiredKinds, false)) return;
+  }
   if (!session || detectR11Page(document) !== page) return;
   let transitioned = false;
   try {

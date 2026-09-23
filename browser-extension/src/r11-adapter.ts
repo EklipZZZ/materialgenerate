@@ -164,11 +164,11 @@ function holderDocumentTypeLabels(holder: CopyrightHolder): string[] {
 }
 
 const uploadAliases: Record<MaterialKind, string[]> = {
-  source_code_pdf: ["源代码 PDF", "源程序鉴别材料", "源程序", "源代码"],
+  source_code_pdf: ["源代码 PDF", "程序鉴别材料", "源程序鉴别材料", "源程序", "源代码"],
   user_manual_pdf: ["用户手册 PDF", "文档鉴别材料", "用户手册", "软件说明书", "文档"],
-  cooperation_agreement: ["合作开发协议", "合作协议"],
-  commission_agreement: ["委托开发协议", "委托协议"],
-  task_order: ["下达任务开发证明", "任务书", "任务开发证明"],
+  cooperation_agreement: ["合作开发合同或协议", "合作开发协议", "合作协议"],
+  commission_agreement: ["委托开发合同或协议", "委托开发协议", "委托协议"],
+  task_order: ["项目任务书或合同", "下达任务开发证明", "任务书", "任务开发证明"],
   signature_page: ["申请确认签章页", "签章页", "签字盖章页"],
   source_code_docx: ["源代码 DOCX"],
   user_manual_docx: ["用户手册 DOCX"],

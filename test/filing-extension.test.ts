@@ -185,6 +185,7 @@ function multiPageFixture(
       window.__datePickerClicks = 0;
       window.__dateCellClicks = [];
       window.__holderSaveClicks = 0;
+      window.__featureUploadedFileNames = [];
       window.__applicationValues = {};
       window.__developmentValues = {};
       window.__featureValues = {};
@@ -455,14 +456,25 @@ function multiPageFixture(
           + inputField("软件运行支撑环境", "runtime-environment")
           + '<div class="fillin_item">编程语言<div class="hd-checkbox-group"><label><input type="checkbox" value="TypeScript"><span>TypeScript</span></label></div><textarea placeholder="若有需要，请输入其他编程语言..."></textarea></div>'
           + inputField("源程序量", "source-code-lines")
-          + inputField("开发目的", "development-purpose")
-          + inputField("面向领域/行业", "target-industry")
-          + inputField("软件的主要功能", "main-functions", "textarea")
+           + inputField("开发目的", "development-purpose", "textarea")
+           + inputField("面向领域/行业", "target-industry", "textarea")
+           + inputField("软件的主要功能", "main-functions", "textarea")
            + '<div class="fillin_item"><h3>软件的技术特点</h3><div class="hd-checkbox-group" data-name="technical-features">'
            + ['APP', '人工智能软件', '云计算软件'].map((item) => '<label class="hd-checkbox-button"><input type="checkbox" value="' + item + '"><span>' + item + '</span></label>').join("")
            + '</div><textarea id="technical-features" placeholder="请输入..."></textarea></div>'
-          + '<button id="next-features">下一步</button>';
-        wireControls();
+           + '<div class="fillin_item"><h3>程序鉴别材料</h3><div class="fillin_info"><div class="upLoadBox"><input id="program-identify-material" type="file"><span class="upload-status"></span></div></div></div>'
+           + '<div class="fillin_item"><h3>文档鉴别材料</h3><div class="fillin_info"><div class="upLoadBox"><input id="document-identify-material" type="file"><span class="upload-status"></span></div></div></div>'
+           + '<button id="next-features">下一步</button>';
+         wireControls();
+         document.querySelectorAll(".upLoadBox input[type='file']").forEach((input) => {
+           input.addEventListener("change", () => {
+             window.setTimeout(() => {
+               const status = input.closest(".upLoadBox")?.querySelector(".upload-status");
+               if (input.files?.[0]) window.__featureUploadedFileNames.push(input.files[0].name);
+               if (status) status.textContent = "上传成功";
+             }, 120);
+           });
+         });
         document.getElementById("next-features").onclick = () => {
           window.__featureValues = {
             developmentHardware: document.getElementById("development-hardware").value,
@@ -596,6 +608,28 @@ async function respondToMaterial(page: Page, manifest: FilingManifest, materialI
   });
 }
 
+async function respondToRequestedMaterials(page: Page, manifest: FilingManifest, kinds: TestMaterialKind[]): Promise<void> {
+  const pending = new Set(kinds);
+  while (pending.size) {
+    const pendingIds = manifest.materials
+      .filter((material) => pending.has(material.kind))
+      .map((material) => material.id);
+    await page.waitForFunction((ids) => {
+      const items = (window as unknown as { __messages: PortalMessage[] }).__messages || [];
+      return items.some((item) => item.type === "FILE_REQUEST" && ids.includes(String(item.materialId)));
+    }, pendingIds, { timeout: 30_000 });
+    const requestedId = await page.evaluate((ids) => {
+      const items = (window as unknown as { __messages: PortalMessage[] }).__messages || [];
+      return items.find((item) => item.type === "FILE_REQUEST" && ids.includes(String(item.materialId)))?.materialId as string | undefined;
+    }, pendingIds);
+    assert.ok(requestedId);
+    const material = manifest.materials.find((item) => item.id === requestedId);
+    assert.ok(material);
+    await respondToMaterial(page, manifest, requestedId);
+    pending.delete(material.kind);
+  }
+}
+
 async function runFormScenario(page: Page, form: CopyrightFormData, fileCount: number): Promise<void> {
   const manifest = manifestFor(form, fileCount);
   await page.setContent(fixture(form, fileCount));
@@ -660,13 +694,9 @@ test("R11 multi-page SPA fills each page after the user chooses applicant identi
     await deliver(page, { protocol: "softreg-filing/v1", source: "softreg-extension", type: "BEGIN_FILING", jobId: manifest.jobId, manifest });
     await waitForCode(page, "login_required");
     await page.locator("#applicant").click();
+    await respondToRequestedMaterials(page, manifest, ["source_code_pdf", "user_manual_pdf", "cooperation_agreement"]);
     const proof = manifest.materials.find((material) => material.kind === "cooperation_agreement");
     assert.ok(proof);
-    await page.waitForFunction((id) => {
-      const items = (window as unknown as { __messages: PortalMessage[] }).__messages || [];
-      return items.some((item) => item.type === "FILE_REQUEST" && item.materialId === id);
-    }, proof.id);
-    await respondToMaterial(page, manifest, proof.id);
     await waitForCode(page, "review_required");
 
     assert.equal(await page.evaluate(() => location.hash), "#/confirm");
@@ -680,6 +710,7 @@ test("R11 multi-page SPA fills each page after the user chooses applicant identi
       dateCellClicks: (window as unknown as { __dateCellClicks: string[] }).__dateCellClicks,
       categoryBoxClicks: (window as unknown as { __softwareCategoryBoxClicks: number }).__softwareCategoryBoxClicks,
       categoryOptionClicks: (window as unknown as { __softwareCategoryOptionClicks: number }).__softwareCategoryOptionClicks,
+      featureUploadedFileNames: (window as unknown as { __featureUploadedFileNames: string[] }).__featureUploadedFileNames,
       holderSaveClicks: (window as unknown as { __holderSaveClicks: number }).__holderSaveClicks,
     }));
     assert.equal(values.application?.fullName, form.software_full_name);
@@ -690,6 +721,7 @@ test("R11 multi-page SPA fills each page after the user chooses applicant identi
     assert.deepEqual(values.dateCellClicks, [form.development_date]);
     assert.equal(values.categoryBoxClicks, 1);
     assert.equal(values.categoryOptionClicks, 1);
+    assert.deepEqual([...values.featureUploadedFileNames].sort(), ["source_code_pdf.pdf", "user_manual_pdf.pdf"].sort());
     assert.equal(values.development?.sharedHolder, "是");
     assert.equal(values.development?.holder0, form.copyright_holders[0].name);
     assert.equal(values.development?.holder1, form.copyright_holders[1].name);
@@ -735,6 +767,7 @@ test("R11 starts the second page before its authenticated owner row finishes mou
     await deliver(page, { protocol: "softreg-filing/v1", source: "softreg-extension", type: "BEGIN_FILING", jobId: manifest.jobId, manifest });
     await waitForCode(page, "login_required");
     await page.locator("#applicant").click();
+    await respondToRequestedMaterials(page, manifest, ["source_code_pdf", "user_manual_pdf"]);
     await waitForCode(page, "review_required", 20_000);
     assert.equal(await page.evaluate(() => location.hash), "#/confirm");
     const values = await page.evaluate(() => ({
@@ -764,6 +797,7 @@ test("R11 waits for an async software category option without toggling the selec
       await deliver(page, { protocol: "softreg-filing/v1", source: "softreg-extension", type: "BEGIN_FILING", jobId: manifest.jobId, manifest });
       await waitForCode(page, "login_required");
       await page.locator("#applicant").click();
+      await respondToRequestedMaterials(page, manifest, ["source_code_pdf", "user_manual_pdf"]);
       await waitForCode(page, "review_required", 20_000);
 
       const values = await page.evaluate(() => ({
@@ -828,6 +862,7 @@ test("R11 retries a navigation after the portal validates before Vue state settl
     await deliver(page, { protocol: "softreg-filing/v1", source: "softreg-extension", type: "BEGIN_FILING", jobId: manifest.jobId, manifest });
     await waitForCode(page, "login_required");
     await page.locator("#applicant").click();
+    await respondToRequestedMaterials(page, manifest, ["source_code_pdf", "user_manual_pdf"]);
     await waitForCode(page, "review_required", 20_000);
     assert.equal(await page.evaluate(() => location.hash), "#/confirm");
     const allMessages = await messages(page);
